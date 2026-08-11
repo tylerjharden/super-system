@@ -54,8 +54,8 @@ class AdaptiveController:
         domain: FactorioDomain | None = None,
         memory: FactorioMemory | None = None,
     ) -> None:
-        if mode is not RunMode.BASELINE and domain is None:
-            raise ValueError("Adapt-enabled controller requires a FactorioDomain")
+        if mode is not RunMode.BASELINE and domain is None and memory is None:
+            raise ValueError("Adapt-enabled controller requires a Domain or Memory gateway")
         self.mode = mode
         self.run_id = run_id
         self.domain_revision = domain_revision
@@ -81,12 +81,19 @@ class AdaptiveController:
             )
             memory = MemoryContext()
         else:
-            if self.domain is None:
-                raise RuntimeError("Adapt Domain disappeared after controller validation")
-            selection = await self.domain.select(
-                state,
-                frozen=self.mode is RunMode.FROZEN,
-                run_id=self.run_id,
+            selection = (
+                await self.domain.select(
+                    state,
+                    frozen=self.mode is RunMode.FROZEN,
+                    run_id=self.run_id,
+                )
+                if self.domain is not None
+                else StrategySelection(
+                    policy=fallback_policy(state),
+                    source=SelectionSource.CONTROLLER,
+                    abstained=True,
+                    reason="memory-only arm uses the deterministic strategy controller",
+                )
             )
             memory = (
                 await self.memory.query(state, frozen=self.mode is RunMode.FROZEN)
@@ -132,19 +139,18 @@ class AdaptiveController:
 
         try:
             if self.mode is RunMode.TRAIN:
-                if self.domain is None:
-                    raise RuntimeError("training controller requires a Domain")
-                payload = self.domain.build_feedback(
-                    ids=pending.ids,
-                    selection=pending.selection,
-                    next_state=after_state,
-                    reward=reward.normalized_reward,
-                    terminal=execution.terminated or execution.truncated,
-                    execution_error=execution.error_occurred,
-                )
-                _, feedback_exchange = await self.domain.client.submit_feedback(
-                    self.domain.domain_id, payload
-                )
+                if self.domain is not None:
+                    payload = self.domain.build_feedback(
+                        ids=pending.ids,
+                        selection=pending.selection,
+                        next_state=after_state,
+                        reward=reward.normalized_reward,
+                        terminal=execution.terminated or execution.truncated,
+                        execution_error=execution.error_occurred,
+                    )
+                    _, feedback_exchange = await self.domain.client.submit_feedback(
+                        self.domain.domain_id, payload
+                    )
                 if self.memory is not None:
                     memory_write_exchange = await self.memory.maybe_store(
                         before=pending.before_state,
