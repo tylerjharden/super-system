@@ -119,6 +119,7 @@ def test_feedback_binds_sealed_decision_and_sequential_fields() -> None:
     assert payload["decision_id"] == "decision-1"
     assert payload["relation"] == "advances_goal"
     assert payload["policy"] == "assemble"
+    assert payload["outcome"] == "progress"
     assert payload["values"]["step_reward"] == 0.4
     assert payload["values"]["terminal"] is True
     assert payload["metadata"]["episode_id"] == "episode-1"
