@@ -62,6 +62,16 @@ class RunLedger:
             _atomic_json_write(ledger.manifest_path, safe_manifest)
         return ledger
 
+    @classmethod
+    def open(cls, run_dir: str | Path) -> RunLedger:
+        path = Path(run_dir)
+        manifest = path / "manifest.json"
+        if not manifest.exists():
+            raise FileNotFoundError(f"run manifest does not exist: {manifest}")
+        events = path / "events.jsonl"
+        sequence = _validated_sequence(events) if events.exists() else 0
+        return cls(path, sequence=sequence)
+
     def append(self, event: BaseModel | Mapping[str, Any]) -> int:
         payload = event.model_dump(mode="json") if isinstance(event, BaseModel) else dict(event)
         self._sequence += 1
