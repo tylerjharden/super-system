@@ -103,7 +103,8 @@ Opening a ledger validates every sequence number. A mismatch raises
 
 Curriculum resume scans manifests and accepts a job as complete only when its
 event stream contains `success` or `trajectory_limit` completion. Failed and
-ambiguous runs remain pending.
+ambiguous runs are blocked, not pending: an operator must reconcile remote
+learner state before intentionally starting a replacement experiment.
 
 ## Common failures
 
