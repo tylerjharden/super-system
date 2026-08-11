@@ -131,6 +131,29 @@ def test_curriculum_refuses_automatic_retry_after_failure(tmp_path: Path) -> Non
         pending_curriculum_jobs(curriculum, tmp_path)
 
 
+def test_curriculum_blocks_incomplete_wal_run(tmp_path: Path) -> None:
+    curriculum = load_curriculum("configs/curriculum.v1.yaml")
+    first = curriculum.jobs()[0]
+    ledger = RunLedger.create(
+        tmp_path,
+        "crashed-run",
+        {
+            "run_id": "crashed-run",
+            "mode": "train",
+            "curriculum_job_id": first.job_id,
+        },
+    )
+    ledger.append(
+        {
+            "kind": "decision_started",
+            "ids": {"interaction_id": "possibly-mutating"},
+        }
+    )
+
+    with pytest.raises(BlockedCurriculumError, match=first.job_id):
+        pending_curriculum_jobs(curriculum, tmp_path)
+
+
 def test_wilson_interval_is_bounded() -> None:
     low, high = wilson_interval(8, 10)
 

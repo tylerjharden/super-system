@@ -152,7 +152,7 @@ def pending_curriculum_jobs(
 
 
 def _run_state(events_path: Path) -> str:
-    state = "pending"
+    state = "blocked"
     with events_path.open(encoding="utf-8") as stream:
         for line in stream:
             if not line.strip():
