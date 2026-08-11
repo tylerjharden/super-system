@@ -8,7 +8,13 @@ from adapt1_fle.curriculum import (
     load_curriculum,
     pending_curriculum_jobs,
 )
-from adapt1_fle.evaluation import build_benchmark_summary, wilson_interval
+from adapt1_fle.evaluation import (
+    ExperimentCell,
+    ExperimentPlan,
+    build_benchmark_summary,
+    wilson_interval,
+    write_experiment_plan,
+)
 from adapt1_fle.ledger import RunLedger
 from adapt1_fle.models import RunCompletion
 from adapt1_fle.report import write_report
@@ -75,6 +81,7 @@ def test_curriculum_validates_task_registry() -> None:
 
 def test_benchmark_summary_and_report_keep_arms_separate(tmp_path: Path) -> None:
     runs = tmp_path / "runs"
+    _experiment_plan(runs)
     _completed_run(runs, "baseline-1", "baseline", success=False, score=2)
     _completed_run(runs, "warm-1", "warm_frozen", success=True, score=16)
 
@@ -96,6 +103,7 @@ def test_benchmark_summary_and_report_keep_arms_separate(tmp_path: Path) -> None
 
 def test_report_rejects_mixed_comparison_protocols(tmp_path: Path) -> None:
     runs = tmp_path / "runs"
+    _experiment_plan(runs)
     _completed_run(runs, "baseline-1", "baseline", success=False, score=2)
     _completed_run(runs, "warm-1", "warm_frozen", success=True, score=16)
     manifest = runs / "warm-1" / "manifest.json"
@@ -107,6 +115,17 @@ def test_report_rejects_mixed_comparison_protocols(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="incompatible comparison fingerprints"):
         build_benchmark_summary(runs)
+
+
+def test_report_marks_missing_planned_cells_incomplete(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _experiment_plan(runs)
+    _completed_run(runs, "baseline-1", "baseline", success=False, score=2)
+
+    summary = build_benchmark_summary(runs)
+
+    assert summary.experiment_complete is False
+    assert summary.missing_cells == ["warm_frozen/iron_plate_throughput/0"]
 
 
 def test_curriculum_refuses_automatic_retry_after_failure(tmp_path: Path) -> None:
@@ -186,6 +205,7 @@ def _completed_run(
             "experiment_id": "experiment-1",
             "comparison_fingerprint": "fingerprint-1",
             "env_id": "iron_plate_throughput",
+            "evaluation_episode": 0,
         },
     )
     ledger.append(
@@ -198,4 +218,26 @@ def _completed_run(
             final_score=score,
             final_automated_score=score,
         )
+    )
+
+
+def _experiment_plan(root: Path) -> None:
+    write_experiment_plan(
+        root,
+        ExperimentPlan(
+            experiment_id="experiment-1",
+            comparison_fingerprint="fingerprint-1",
+            cells=[
+                ExperimentCell(
+                    arm="baseline",
+                    env_id="iron_plate_throughput",
+                    episode=0,
+                ),
+                ExperimentCell(
+                    arm="warm_frozen",
+                    env_id="iron_plate_throughput",
+                    episode=0,
+                ),
+            ],
+        ),
     )

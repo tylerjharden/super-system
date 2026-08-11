@@ -32,6 +32,7 @@ def render_markdown(summary: BenchmarkSummary) -> str:
         f"Runs analyzed: **{summary.total_runs}**",
         f"Experiment: **{summary.experiment_id or 'none selected'}**",
         f"Comparison fingerprint: `{summary.comparison_fingerprint or 'none'}`",
+        f"Experiment matrix complete: **{summary.experiment_complete}**",
         "",
         *_table_header(),
     ]
@@ -44,6 +45,19 @@ def render_markdown(summary: BenchmarkSummary) -> str:
         for arm, metrics in arms.items():
             lines.append(_arm_row(arm, metrics))
         lines.append("")
+
+    if not summary.experiment_complete:
+        lines.extend(
+            [
+                "## Incomplete experiment",
+                "",
+                f"Missing cells: `{', '.join(summary.missing_cells) or 'none'}`",
+                f"Duplicate cells: `{', '.join(summary.duplicate_cells) or 'none'}`",
+                "",
+                "Do not use this report for comparative claims.",
+                "",
+            ]
+        )
 
     lines.extend(
         [

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import math
-from collections import defaultdict
+import os
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from statistics import fmean
@@ -48,10 +49,43 @@ class BenchmarkSummary(BaseModel):
     generated_from: str
     experiment_id: str | None
     comparison_fingerprint: str | None
+    experiment_complete: bool
+    missing_cells: list[str]
+    duplicate_cells: list[str]
     total_runs: int = Field(ge=0)
     arms: dict[str, ArmMetrics]
     task_arms: dict[str, dict[str, ArmMetrics]]
     runs: list[RunMetrics]
+
+
+class ExperimentCell(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    arm: str
+    env_id: str
+    episode: int = Field(ge=0)
+
+    @property
+    def key(self) -> str:
+        return f"{self.arm}/{self.env_id}/{self.episode}"
+
+
+class ExperimentPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    experiment_id: str
+    comparison_fingerprint: str
+    cells: list[ExperimentCell] = Field(min_length=1)
+
+
+def write_experiment_plan(ledger_root: str | Path, plan: ExperimentPlan) -> Path:
+    directory = Path(ledger_root) / "_experiments"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{plan.experiment_id}.json"
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(plan.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+    return path
 
 
 def build_benchmark_summary(
@@ -98,6 +132,23 @@ def build_benchmark_summary(
         raise ValueError("experiment mixes incompatible comparison fingerprints")
     resolved_experiment = experiment_id or next(iter(experiment_ids), None)
     resolved_fingerprint = next(iter(fingerprints), None)
+    experiment_complete = False
+    missing_cells: list[str] = []
+    duplicate_cells: list[str] = []
+    if resolved_experiment is not None:
+        plan = _load_experiment_plan(root, resolved_experiment)
+        if plan.comparison_fingerprint != resolved_fingerprint:
+            raise ValueError("experiment plan fingerprint differs from run manifests")
+        observed = Counter(
+            _cell_key(manifest) for values in grouped.values() for _, manifest in values
+        )
+        expected = {cell.key for cell in plan.cells}
+        missing_cells = sorted(expected - set(observed))
+        duplicate_cells = sorted(key for key, count in observed.items() if count > 1)
+        unexpected = sorted(set(observed) - expected)
+        if unexpected:
+            raise ValueError(f"experiment contains unplanned benchmark cells: {unexpected}")
+        experiment_complete = not missing_cells and not duplicate_cells
 
     arms = {arm: _summarize_arm(arm, values) for arm, values in sorted(grouped.items())}
     task_arms: defaultdict[str, dict[str, ArmMetrics]] = defaultdict(dict)
@@ -107,6 +158,9 @@ def build_benchmark_summary(
         generated_from=str(root),
         experiment_id=resolved_experiment,
         comparison_fingerprint=resolved_fingerprint,
+        experiment_complete=experiment_complete,
+        missing_cells=missing_cells,
+        duplicate_cells=duplicate_cells,
         total_runs=len(all_metrics),
         arms=arms,
         task_arms=dict(task_arms),
@@ -188,3 +242,19 @@ def wilson_interval(successes: int, total: int, *, z: float = 1.96) -> tuple[flo
 def _mean(values: Iterable[float]) -> float:
     materialized = list(values)
     return fmean(materialized) if materialized else 0.0
+
+
+def _load_experiment_plan(root: Path, experiment_id: str) -> ExperimentPlan:
+    path = root / "_experiments" / f"{experiment_id}.json"
+    if not path.exists():
+        raise ValueError(f"experiment plan does not exist: {path}")
+    return ExperimentPlan.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _cell_key(manifest: dict[str, Any]) -> str:
+    arm = manifest.get("benchmark_arm")
+    env_id = manifest.get("env_id")
+    episode = manifest.get("evaluation_episode")
+    if not isinstance(arm, str) or not isinstance(env_id, str) or not isinstance(episode, int):
+        raise ValueError("benchmark manifest lacks arm, env_id, or evaluation_episode")
+    return f"{arm}/{env_id}/{episode}"

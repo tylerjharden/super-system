@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import importlib.metadata
 import importlib.resources
+import inspect
 import json
 import os
 import socket
@@ -26,14 +27,24 @@ from adapt1_fle.adapt.domain import FactorioDomain, load_domain_definition
 from adapt1_fle.adapt.memory import FactorioMemory
 from adapt1_fle.agent.controller import AdaptiveController
 from adapt1_fle.agent.model import FLEPolicyGenerator, StaticPolicyGenerator
-from adapt1_fle.agent.prompt import ConversationWindow, build_system_prompt
+from adapt1_fle.agent.prompt import (
+    POLICY_REQUIREMENTS,
+    ConversationWindow,
+    build_system_prompt,
+)
 from adapt1_fle.config import RunMode, Settings
 from adapt1_fle.curriculum import (
     BenchmarkArm,
     load_curriculum,
     pending_curriculum_jobs,
 )
-from adapt1_fle.evaluation import build_benchmark_summary
+from adapt1_fle.evaluation import (
+    ExperimentCell,
+    ExperimentPlan,
+    build_benchmark_summary,
+    write_experiment_plan,
+)
+from adapt1_fle.factorio.reward import calculate_reward
 from adapt1_fle.ledger import RunLedger
 from adapt1_fle.models import RunCompletion
 from adapt1_fle.report import write_report
@@ -314,6 +325,30 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
     arms = arguments.arm or [BenchmarkArm.BASELINE.value, BenchmarkArm.WARM_FROZEN.value]
     tasks = arguments.task or curriculum.held_out_tasks
     experiment_id = _new_run_id("experiment")
+    plan_settings = (
+        _updated_settings(settings, {"trajectory_length": arguments.steps})
+        if arguments.steps is not None
+        else settings
+    )
+    definition = load_domain_definition(settings.domain_config_path)
+    protocol_fingerprint = comparison_fingerprint(
+        plan_settings,
+        domain_contract_hash=definition.contract_hash,
+        generator_id="static-smoke-policy" if arguments.static_policy else settings.model,
+    )
+    write_experiment_plan(
+        settings.ledger_root,
+        ExperimentPlan(
+            experiment_id=experiment_id,
+            comparison_fingerprint=protocol_fingerprint,
+            cells=[
+                ExperimentCell(arm=arm, env_id=env_id, episode=episode)
+                for arm in arms
+                for env_id in tasks
+                for episode in range(arguments.episodes)
+            ],
+        ),
+    )
     print(f"experiment_id={experiment_id}")
     for arm_name in arms:
         arm = BenchmarkArm(arm_name)
@@ -402,6 +437,7 @@ async def execute_run(
         "comparison_fingerprint": comparison_fingerprint(
             settings,
             domain_contract_hash=definition.contract_hash,
+            generator_id="static-smoke-policy" if static_policy else settings.model,
         ),
     }
     if manifest_extra:
@@ -573,14 +609,23 @@ def comparison_fingerprint(
     settings: Settings,
     *,
     domain_contract_hash: str,
+    generator_id: str,
 ) -> str:
+    static_generator = generator_id == "static-smoke-policy"
     contract = {
-        "model": settings.model,
+        "generator": generator_id,
+        "temperature": None if static_generator else 0.2,
+        "max_tokens": None if static_generator else 4096,
         "trajectory_length": settings.trajectory_length,
         "fle_version": importlib.metadata.version("factorio-learning-environment"),
         "domain_contract_hash": domain_contract_hash,
-        "reward_contract": "factorio-public-reward-v1",
-        "prompt_contract": "adapt1-fle-prompt-v1",
+        "reward_contract_hash": _source_hash(calculate_reward),
+        "prompt_contract_hash": _source_hash(build_system_prompt)
+        + hashlib.sha256(POLICY_REQUIREMENTS.encode("utf-8")).hexdigest(),
     }
     encoded = json.dumps(contract, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _source_hash(value: Any) -> str:
+    return hashlib.sha256(inspect.getsource(value).encode("utf-8")).hexdigest()

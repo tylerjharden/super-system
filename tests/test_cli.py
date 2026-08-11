@@ -51,7 +51,23 @@ def test_comparison_fingerprint_excludes_run_and_arm_identity() -> None:
     assert comparison_fingerprint(
         baseline,
         domain_contract_hash="contract",
+        generator_id="model",
     ) == comparison_fingerprint(
         frozen,
         domain_contract_hash="contract",
+        generator_id="model",
+    )
+
+
+def test_comparison_fingerprint_uses_actual_generator() -> None:
+    settings = Settings()
+
+    assert comparison_fingerprint(
+        settings,
+        domain_contract_hash="contract",
+        generator_id="static-smoke-policy",
+    ) != comparison_fingerprint(
+        settings,
+        domain_contract_hash="contract",
+        generator_id=settings.model,
     )
