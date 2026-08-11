@@ -459,7 +459,7 @@ def _arm_settings(
     if arm is BenchmarkArm.COLD_ONLINE:
         update["mode"] = RunMode.TRAIN
         update["domain_id"] = f"{settings.domain_id}-cold-{run_id[-8:]}"
-        return _updated_settings(settings, update), True, True
+        return _updated_settings(settings, update), True, False
     if arm is BenchmarkArm.WARM_FROZEN:
         update["mode"] = RunMode.FROZEN
         return _updated_settings(settings, update), True, True

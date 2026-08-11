@@ -188,7 +188,7 @@ This writes:
 | Arm | Domain | Memory | Writes |
 |---|---:|---:|---:|
 | `baseline` | no | no | no |
-| `cold_online` | fresh | yes | yes |
+| `cold_online` | fresh | no | yes |
 | `warm_frozen` | trained | yes | no |
 | `domain_only` | trained | no | no |
 | `memory_only` | no | yes | no |
