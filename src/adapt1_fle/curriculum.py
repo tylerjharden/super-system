@@ -10,6 +10,10 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class BlockedCurriculumError(RuntimeError):
+    """A prior failed/ambiguous job requires operator reconciliation."""
+
+
 class BenchmarkArm(StrEnum):
     BASELINE = "baseline"
     COLD_ONLINE = "cold_online"
@@ -88,10 +92,18 @@ def load_curriculum(path: str | Path) -> Curriculum:
 def completed_curriculum_jobs(ledger_root: str | Path) -> set[str]:
     """Find jobs with a successful or trajectory-limit completion event."""
 
-    completed: set[str] = set()
+    return {
+        job_id
+        for job_id, state in curriculum_job_states(ledger_root).items()
+        if state == "completed"
+    }
+
+
+def curriculum_job_states(ledger_root: str | Path) -> dict[str, str]:
+    states: dict[str, str] = {}
     root = Path(ledger_root)
     if not root.exists():
-        return completed
+        return states
     for run_dir in root.iterdir():
         if not run_dir.is_dir():
             continue
@@ -103,26 +115,50 @@ def completed_curriculum_jobs(ledger_root: str | Path) -> set[str]:
         job_id = manifest.get("curriculum_job_id")
         if not isinstance(job_id, str):
             continue
-        if _has_completion(events_path):
-            completed.add(job_id)
-    return completed
+        run_state = _run_state(events_path)
+        previous = states.get(job_id)
+        if run_state == "completed" or previous is None:
+            states[job_id] = run_state
+    return states
 
 
 def pending_curriculum_jobs(
     curriculum: Curriculum,
     ledger_root: str | Path,
 ) -> list[CurriculumJob]:
-    completed = completed_curriculum_jobs(ledger_root)
-    return [job for job in curriculum.jobs() if job.job_id not in completed]
+    states = curriculum_job_states(ledger_root)
+    blocked = sorted(job.job_id for job in curriculum.jobs() if states.get(job.job_id) == "blocked")
+    if blocked:
+        raise BlockedCurriculumError(
+            "curriculum contains failed or ambiguous jobs requiring reconciliation: "
+            + ", ".join(blocked)
+        )
+    return [job for job in curriculum.jobs() if states.get(job.job_id) != "completed"]
 
 
-def _has_completion(events_path: Path) -> bool:
+def _run_state(events_path: Path) -> str:
+    state = "pending"
     with events_path.open(encoding="utf-8") as stream:
         for line in stream:
             if not line.strip():
                 continue
             envelope = json.loads(line)
             event = envelope.get("event", {})
-            if isinstance(event, dict) and event.get("kind") == "completion":
-                return event.get("status") in {"success", "trajectory_limit"}
+            if not isinstance(event, dict):
+                continue
+            if event.get("kind") == "interaction" and _interaction_is_ambiguous(event):
+                state = "blocked"
+            if event.get("kind") == "completion":
+                if event.get("status") in {"success", "trajectory_limit"}:
+                    return "completed"
+                if event.get("status") == "failed":
+                    state = "blocked"
+    return state
+
+
+def _interaction_is_ambiguous(event: dict[str, object]) -> bool:
+    for key in ("feedback_exchange", "memory_write_exchange"):
+        exchange = event.get(key)
+        if isinstance(exchange, dict) and exchange.get("ambiguous") is True:
+            return True
     return False

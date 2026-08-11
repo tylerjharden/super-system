@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from adapt1_fle.curriculum import load_curriculum, pending_curriculum_jobs
+import pytest
+
+from adapt1_fle.curriculum import (
+    BlockedCurriculumError,
+    load_curriculum,
+    pending_curriculum_jobs,
+)
 from adapt1_fle.evaluation import build_benchmark_summary, wilson_interval
 from adapt1_fle.ledger import RunLedger
 from adapt1_fle.models import RunCompletion
@@ -69,6 +75,35 @@ def test_benchmark_summary_and_report_keep_arms_separate(tmp_path: Path) -> None
     assert "| baseline |" in markdown
     assert "| warm_frozen |" in markdown
     assert "does not assert state of the art" in markdown
+
+
+def test_curriculum_refuses_automatic_retry_after_failure(tmp_path: Path) -> None:
+    curriculum = load_curriculum("configs/curriculum.v1.yaml")
+    first = curriculum.jobs()[0]
+    ledger = RunLedger.create(
+        tmp_path,
+        "failed-run",
+        {
+            "run_id": "failed-run",
+            "mode": "train",
+            "curriculum_job_id": first.job_id,
+        },
+    )
+    ledger.append(
+        RunCompletion(
+            run_id="failed-run",
+            episode_id="episode-1",
+            status="failed",
+            steps_completed=1,
+            success=False,
+            final_score=0,
+            final_automated_score=0,
+            error="ambiguous feedback",
+        )
+    )
+
+    with pytest.raises(BlockedCurriculumError, match=first.job_id):
+        pending_curriculum_jobs(curriculum, tmp_path)
 
 
 def test_wilson_interval_is_bounded() -> None:
