@@ -61,7 +61,7 @@ class Settings(BaseModel):
 
     adapt_base_url: str = "https://rei-neuroadapt-api.reilabs.org"
     adapt_api_key: SecretStr | None = None
-    domain_id: str = "factorio-strategy-v1"
+    domain_id: str = "factorio-strategy-v2"
     domain_config_path: Path = Path("configs/domain.factorio.v1.yaml")
     model: str = "claude-sonnet-4-20250514"
     env_id: str = "iron_ore_throughput"

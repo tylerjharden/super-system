@@ -13,7 +13,9 @@ receive held-out benchmark labels.
 ## Public vocabulary
 
 The Domain declares task, factory state, inventory, production flow, strategy,
-execution, and outcome concepts. Available policies are:
+execution, and outcome concepts in the Adapt schema vocabulary. Available
+policies are declared as named hypotheses under relation `advances_goal`, and
+feedback outcomes are listed in `query_templates.feedback_outcomes`. Policies:
 
 | Policy | Public meaning |
 |---|---|

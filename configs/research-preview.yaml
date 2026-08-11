@@ -1,5 +1,5 @@
 adapt_base_url: https://rei-neuroadapt-api.reilabs.org
-domain_id: factorio-strategy-v1
+domain_id: factorio-strategy-v2
 domain_config_path: configs/domain.factorio.v1.yaml
 model: claude-sonnet-4-20250514
 env_id: iron_ore_throughput
