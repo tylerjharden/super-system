@@ -314,6 +314,7 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
     arms = arguments.arm or [BenchmarkArm.BASELINE.value, BenchmarkArm.WARM_FROZEN.value]
     tasks = arguments.task or curriculum.held_out_tasks
     experiment_id = _new_run_id("experiment")
+    print(f"experiment_id={experiment_id}")
     for arm_name in arms:
         arm = BenchmarkArm(arm_name)
         for env_id in tasks:
