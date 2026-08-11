@@ -1,7 +1,5 @@
 """Shared typed contracts for the research harness."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
