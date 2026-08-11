@@ -27,8 +27,8 @@ without Adapt. A valid result requires:
 7. open-play transfer.
 
 Each curriculum job has a stable ID. Training resumes by finding a confirmed
-completion event for that job. Failed or ambiguous jobs are not silently marked
-complete.
+completion event for that job. Failed or ambiguous jobs block automatic rerun
+until an operator reconciles Adapt and FLE state.
 
 ## Comparison arms
 
@@ -91,6 +91,11 @@ adapt1-fle evaluate \
 adapt1-fle report --output reports/experiment-001
 ```
 
+One `evaluate` invocation prints and stores an immutable experiment ID. Reports
+ignore curriculum/non-benchmark runs, require one experiment ID, and reject
+mixed comparison fingerprints. Use `--experiment-id` when a ledger root
+contains multiple evaluation invocations.
+
 ## Information-condition checks
 
 Every manifest records:
@@ -110,6 +115,7 @@ Every interaction records:
 - selected-by provenance;
 - Memory result;
 - exact Python and model usage;
+- exact model input messages and staged decision/action WAL records;
 - FLE consequence;
 - raw and normalized reward;
 - feedback and Memory-write response;
