@@ -128,6 +128,21 @@ def test_report_marks_missing_planned_cells_incomplete(tmp_path: Path) -> None:
     assert summary.missing_cells == ["warm_frozen/iron_plate_throughput/0"]
 
 
+def test_plan_only_report_lists_every_cell_missing(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _experiment_plan(runs)
+
+    summary = build_benchmark_summary(runs, experiment_id="experiment-1")
+
+    assert summary.experiment_complete is False
+    assert summary.total_runs == 0
+    assert summary.comparison_fingerprint == "fingerprint-1"
+    assert summary.missing_cells == [
+        "baseline/iron_plate_throughput/0",
+        "warm_frozen/iron_plate_throughput/0",
+    ]
+
+
 def test_curriculum_refuses_automatic_retry_after_failure(tmp_path: Path) -> None:
     curriculum = load_curriculum("configs/curriculum.v1.yaml")
     first = curriculum.jobs()[0]

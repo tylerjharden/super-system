@@ -124,6 +124,14 @@ def build_benchmark_summary(
             experiment_ids.add(manifest_experiment)
             fingerprints.add(fingerprint)
 
+    if experiment_id is None and not experiment_ids:
+        planned_ids = _planned_experiment_ids(root)
+        if len(planned_ids) == 1:
+            experiment_ids = planned_ids
+        elif len(planned_ids) > 1:
+            raise ValueError(
+                "ledger root contains multiple experiment plans; select one with --experiment-id"
+            )
     if experiment_id is None and len(experiment_ids) > 1:
         raise ValueError(
             "ledger root contains multiple experiments; select one with --experiment-id"
@@ -137,7 +145,9 @@ def build_benchmark_summary(
     duplicate_cells: list[str] = []
     if resolved_experiment is not None:
         plan = _load_experiment_plan(root, resolved_experiment)
-        if plan.comparison_fingerprint != resolved_fingerprint:
+        if resolved_fingerprint is None:
+            resolved_fingerprint = plan.comparison_fingerprint
+        elif plan.comparison_fingerprint != resolved_fingerprint:
             raise ValueError("experiment plan fingerprint differs from run manifests")
         observed = Counter(
             _cell_key(manifest) for values in grouped.values() for _, manifest in values
@@ -258,3 +268,10 @@ def _cell_key(manifest: dict[str, Any]) -> str:
     if not isinstance(arm, str) or not isinstance(env_id, str) or not isinstance(episode, int):
         raise ValueError("benchmark manifest lacks arm, env_id, or evaluation_episode")
     return f"{arm}/{env_id}/{episode}"
+
+
+def _planned_experiment_ids(root: Path) -> set[str]:
+    directory = root / "_experiments"
+    if not directory.exists():
+        return set()
+    return {path.stem for path in directory.glob("*.json")}
