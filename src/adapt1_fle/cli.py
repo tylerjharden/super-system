@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
 from fle.env.gym_env.registry import get_environment_info, list_available_environments
 from fle.env.utils.controller_loader.system_prompt_generator import SystemPromptGenerator
@@ -30,8 +31,14 @@ from adapt1_fle.adapt.domain import (
 )
 from adapt1_fle.adapt.memory import FactorioMemory
 from adapt1_fle.agent.controller import AdaptiveController
-from adapt1_fle.agent.model import FLEPolicyGenerator, StaticPolicyGenerator
+from adapt1_fle.agent.model import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+    FLEPolicyGenerator,
+    StaticPolicyGenerator,
+)
 from adapt1_fle.agent.prompt import (
+    LOCAL_FLE_SYSTEM_PROMPT,
     POLICY_REQUIREMENTS,
     ConversationWindow,
     build_step_prompt,
@@ -98,6 +105,11 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--episodes", type=int, default=1)
     evaluate.add_argument("--steps", type=int, default=None)
     evaluate.add_argument("--static-policy", action="store_true")
+    evaluate.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="record operationally failed cells and continue the experiment matrix",
+    )
 
     report = commands.add_parser("report", help="aggregate immutable run ledgers")
     report.add_argument("--ledger-root", default=None)
@@ -192,13 +204,20 @@ async def doctor(config_path: str) -> int:
             "authentication_error": auth_error,
         }
     credential_name = _model_credential_name(settings.model)
-    model_credential_present = (
-        bool(os.getenv(credential_name)) or credential_name == "OLLAMA_API_KEY"
+    provenance = model_provenance(settings.model)
+    local_model = settings.model.startswith("ollama")
+    model_credential_present = bool(os.getenv(credential_name)) or local_model
+    model_ok = (
+        bool(provenance.get("runtime_ok")) and bool(provenance.get("model_installed"))
+        if local_model
+        else model_credential_present
     )
     checks["model"] = {
+        "ok": model_ok,
         "model": settings.model,
         "credential_name": credential_name,
         "credential_present": model_credential_present,
+        "provenance": provenance,
     }
     checks["ledger"] = {
         "ok": _writable_parent(settings.ledger_root),
@@ -210,7 +229,7 @@ async def doctor(config_path: str) -> int:
         and checks["factorio"]["ok"]
         and checks["adapt_1"]["ok"]
         and (not settings.adapt_enabled or checks["adapt_1"]["authentication_ok"])
-        and checks["model"]["credential_present"]
+        and checks["model"]["ok"]
         and checks["ledger"]["ok"]
     )
     checks["ok"] = required_ok
@@ -337,10 +356,13 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
         else settings
     )
     definition = load_domain_definition(settings.domain_config_path)
+    generator_id = (
+        "static-smoke-policy" if arguments.static_policy else model_identity(settings.model)
+    )
     protocol_fingerprint = comparison_fingerprint(
         plan_settings,
         domain_contract_hash=definition.contract_hash,
-        generator_id="static-smoke-policy" if arguments.static_policy else settings.model,
+        generator_id=generator_id,
     )
     write_experiment_plan(
         settings.ledger_root,
@@ -368,23 +390,32 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
                     env_id=env_id,
                     steps=arguments.steps,
                 )
-                completion, run_dir = await execute_run(
-                    arm_settings,
-                    static_policy=arguments.static_policy,
-                    enable_domain=domain_enabled,
-                    enable_memory=memory_enabled,
-                    benchmark_arm=arm.value,
-                    manifest_extra={
-                        "held_out": env_id in curriculum.held_out_tasks,
-                        "evaluation_episode": episode,
-                        "curriculum_revision": curriculum.revision,
-                        "experiment_id": experiment_id,
-                    },
-                )
-                print(
-                    f"{arm.value}/{env_id}/{episode}: {completion.status} "
-                    f"score={completion.final_score:.3f} ledger={run_dir}"
-                )
+                try:
+                    completion, run_dir = await execute_run(
+                        arm_settings,
+                        static_policy=arguments.static_policy,
+                        enable_domain=domain_enabled,
+                        enable_memory=memory_enabled,
+                        benchmark_arm=arm.value,
+                        manifest_extra={
+                            "held_out": env_id in curriculum.held_out_tasks,
+                            "evaluation_episode": episode,
+                            "curriculum_revision": curriculum.revision,
+                            "experiment_id": experiment_id,
+                        },
+                    )
+                    print(
+                        f"{arm.value}/{env_id}/{episode}: {completion.status} "
+                        f"score={completion.final_score:.3f} ledger={run_dir}"
+                    )
+                except Exception as error:
+                    print(
+                        f"{arm.value}/{env_id}/{episode}: operational_failure "
+                        f"{type(error).__name__}: {error}",
+                        file=sys.stderr,
+                    )
+                    if not arguments.continue_on_error:
+                        raise
     return 0
 
 
@@ -422,6 +453,14 @@ async def execute_run(
     run_id = settings.run_id or _new_run_id(settings.env_id)
     episode_id = f"{run_id}-episode-000"
     definition = load_domain_definition(settings.domain_config_path)
+    model_details = (
+        {"provider": "static", "model": "static-smoke-policy"}
+        if static_policy
+        else model_provenance(settings.model)
+    )
+    generator_id = (
+        "static-smoke-policy" if static_policy else model_identity(settings.model, model_details)
+    )
     manifest: dict[str, Any] = {
         "run_id": run_id,
         "episode_id": episode_id,
@@ -430,6 +469,7 @@ async def execute_run(
         "benchmark_arm": benchmark_arm,
         "env_id": settings.env_id,
         "model": "static-smoke-policy" if static_policy else settings.model,
+        "model_provenance": model_details,
         "trajectory_length": settings.trajectory_length,
         "domain_id": settings.domain_id if enable_domain else None,
         "domain_revision": definition.revision if enable_domain else None,
@@ -443,7 +483,7 @@ async def execute_run(
         "comparison_fingerprint": comparison_fingerprint(
             settings,
             domain_contract_hash=definition.contract_hash,
-            generator_id="static-smoke-policy" if static_policy else settings.model,
+            generator_id=generator_id,
         ),
     }
     if manifest_extra:
@@ -464,16 +504,24 @@ async def execute_run(
         if domain is not None:
             await domain.ensure(create_if_missing=settings.mode is RunMode.TRAIN)
         memory = (
-            FactorioMemory(client, top_k=min(settings.adapt_top_k, 12))
+            FactorioMemory(
+                client,
+                namespace=settings.domain_id,
+                top_k=min(settings.adapt_top_k, 12),
+            )
             if settings.adapt_enabled and enable_memory
             else None
         )
         environment_info = get_environment_info(settings.env_id)
         if environment_info is None:
             raise ValueError(f"unknown FLE environment: {settings.env_id}")
-        fle_prompt = SystemPromptGenerator(
-            str(importlib.resources.files("fle") / "env")
-        ).generate_for_agent(agent_idx=0, num_agents=1)
+        fle_prompt = (
+            LOCAL_FLE_SYSTEM_PROMPT
+            if settings.model.startswith("ollama")
+            else SystemPromptGenerator(
+                str(importlib.resources.files("fle") / "env")
+            ).generate_for_agent(agent_idx=0, num_agents=1)
+        )
         system_prompt = build_system_prompt(
             fle_system_prompt=fle_prompt,
             goal=str(environment_info["description"]),
@@ -563,6 +611,65 @@ def _new_run_id(prefix: str) -> str:
     return f"{safe_prefix}-{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
+def model_provenance(model: str) -> dict[str, Any]:
+    """Resolve immutable local-model metadata without exposing credentials."""
+
+    if not model.startswith("ollama"):
+        return {"provider": _model_credential_name(model), "model": model}
+
+    resolved = model.removeprefix("ollama-")
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
+    tags_url = f"{base_url.removesuffix('/v1').rstrip('/')}/api/tags"
+    try:
+        response = httpx.get(tags_url, timeout=3)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as error:
+        return {
+            "provider": "ollama",
+            "model": resolved,
+            "runtime_ok": False,
+            "model_installed": False,
+            "error": f"{type(error).__name__}: {error}",
+        }
+
+    models = payload.get("models", []) if isinstance(payload, dict) else []
+    match = next(
+        (
+            item
+            for item in models
+            if isinstance(item, dict)
+            and item.get("name") in {resolved, f"{resolved}:latest"}
+        ),
+        None,
+    )
+    if match is None:
+        return {
+            "provider": "ollama",
+            "model": resolved,
+            "runtime_ok": True,
+            "model_installed": False,
+        }
+    details = match.get("details") if isinstance(match.get("details"), dict) else {}
+    return {
+        "provider": "ollama",
+        "model": resolved,
+        "runtime_ok": True,
+        "model_installed": True,
+        "digest": match.get("digest"),
+        "size_bytes": match.get("size"),
+        "parameter_size": details.get("parameter_size"),
+        "quantization_level": details.get("quantization_level"),
+        "format": details.get("format"),
+    }
+
+
+def model_identity(model: str, provenance: dict[str, Any] | None = None) -> str:
+    details = provenance or model_provenance(model)
+    digest = details.get("digest")
+    return f"{model}@{digest}" if isinstance(digest, str) and digest else model
+
+
 def _model_credential_name(model: str) -> str:
     if "/" in model or model.startswith("open-router"):
         return "OPEN_ROUTER_API_KEY"
@@ -620,8 +727,8 @@ def comparison_fingerprint(
     static_generator = generator_id == "static-smoke-policy"
     contract = {
         "generator": generator_id,
-        "temperature": None if static_generator else 0.2,
-        "max_tokens": None if static_generator else 4096,
+        "temperature": None if static_generator else DEFAULT_TEMPERATURE,
+        "max_tokens": None if static_generator else DEFAULT_MAX_TOKENS,
         "trajectory_length": settings.trajectory_length,
         "max_messages": settings.max_messages,
         "adapt_top_k": settings.adapt_top_k,
@@ -636,7 +743,11 @@ def comparison_fingerprint(
         "prompt_contract_hash": _combined_source_hash(
             build_system_prompt,
             build_step_prompt,
-            extra=POLICY_REQUIREMENTS,
+            extra=POLICY_REQUIREMENTS + LOCAL_FLE_SYSTEM_PROMPT,
+        ),
+        "memory_contract_hash": _combined_source_hash(
+            FactorioMemory.query,
+            FactorioMemory.maybe_store,
         ),
         "state_contract_hash": _combined_source_hash(compact_state, infer_phase),
         "selection_contract_hash": _combined_source_hash(normalize_strategy_response),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+import sys
 import time
 from collections.abc import Sequence
 from typing import Any, Protocol
@@ -13,11 +14,15 @@ from fle.agents.llm.parsing import parse_response
 
 from adapt1_fle.models import GeneratedPolicy
 
+DEFAULT_MAX_TOKENS = 1024
+DEFAULT_TEMPERATURE = 0.2
+
 _REPAIR_PROMPT = (
     "Your previous reply was not usable. Reply with exactly one fenced "
     "```python``` block containing the next Factorio Learning Environment action. "
-    "Use only FLE tools already available in the REPL. Do not redefine helpers, "
-    "paste JSON state, or include prose outside the fence."
+    "Call FLE tools directly: never import fle, flet, flapi, or any non-standard "
+    "library. Do not redefine helpers, paste JSON state, or include prose outside "
+    "the fence."
 )
 
 _FENCED_PYTHON = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
@@ -41,8 +46,8 @@ class FLEPolicyGenerator:
         self,
         model: str,
         *,
-        max_tokens: int = 4096,
-        temperature: float = 0.2,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        temperature: float = DEFAULT_TEMPERATURE,
         api_key_config_file: str | None = None,
         parse_retries: int = 1,
     ) -> None:
@@ -131,9 +136,25 @@ def validate_python(code: str) -> None:
     if len(code) > 10_000:
         raise PolicyGenerationError("generated policy exceeds FLE's 10,000 character limit")
     try:
-        ast.parse(code)
+        tree = ast.parse(code)
     except SyntaxError as error:
         raise PolicyGenerationError(f"generated policy is invalid Python: {error}") from error
+    imported_roots = {
+        alias.name.partition(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    imported_roots.update(
+        node.module.partition(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    )
+    unsupported = sorted(imported_roots - sys.stdlib_module_names)
+    if unsupported:
+        raise PolicyGenerationError(
+            "generated policy imports unavailable modules: " + ", ".join(unsupported)
+        )
 
 
 def _extract_python_code(response: Any, raw_content: str) -> str | None:

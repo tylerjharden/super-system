@@ -7,7 +7,7 @@ from adapt1_fle.agent.model import (
     _extract_python_code,
     validate_python,
 )
-from adapt1_fle.agent.prompt import ConversationWindow
+from adapt1_fle.agent.prompt import LOCAL_FLE_SYSTEM_PROMPT, ConversationWindow
 from adapt1_fle.ledger import LedgerCorruptionError, RunLedger, redact
 
 
@@ -16,8 +16,17 @@ def test_python_validation_blocks_invalid_or_oversized_code() -> None:
         validate_python("if:")
     with pytest.raises(PolicyGenerationError, match="10,000"):
         validate_python("x" * 10_001)
+    with pytest.raises(PolicyGenerationError, match="unavailable modules: flapi"):
+        validate_python("import flapi\nflapi.nearest('iron-ore')")
 
     validate_python("print(inspect_inventory())")
+    validate_python("import math\nprint(math.sqrt(4))")
+
+
+def test_local_fle_prompt_calls_tools_without_imports() -> None:
+    assert "Do not\nimport an FLE module" in LOCAL_FLE_SYSTEM_PROMPT
+    assert "ore_pos = nearest(Resource.IronOre)" in LOCAL_FLE_SYSTEM_PROMPT
+    assert "drill = insert_item(Prototype.Coal" in LOCAL_FLE_SYSTEM_PROMPT
 
 
 def test_extract_python_code_uses_last_fenced_block() -> None:

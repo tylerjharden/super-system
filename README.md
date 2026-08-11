@@ -71,7 +71,7 @@ learning itself—becomes the research target.
 - Factorio server image `factoriotools/factorio:2.0.73`
 - FLE `>=0.4.3,<0.5`
 - REI Adapt-1 bearer key
-- A provider key for the selected code-synthesis model
+- Ollama with `qwen2.5-coder:7b` (installed automatically), or a hosted-model key
 
 The Cursor environment installs these automatically:
 
@@ -95,12 +95,13 @@ fle cluster start -n 1
 cp .env.example .env
 ```
 
-Set:
+Set the Adapt key. Local code synthesis is the default and needs no third-party
+model API key:
 
 ```dotenv
 ADAPT1_API_KEY=<rei-unit-api-key>
-ADAPT1_FLE_MODEL=claude-sonnet-4-20250514
-ANTHROPIC_API_KEY=<provider-key>
+ADAPT1_FLE_MODEL=ollama-qwen2.5-coder:7b
+OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
 ```
 
 `REI_API_KEY`, `REI_SECRET_TOKEN`, and `REI_UNIT_API_KEY` are accepted as
@@ -114,7 +115,34 @@ adapt1-fle doctor
 
 `doctor` checks Python, FLE, the task registry, local Factorio RCON, public
 Adapt health/version, authenticated Domain access when a key is present, the
-model credential name, and the ledger path. It never prints secret values.
+Ollama runtime and exact model digest (or hosted credential), and the ledger
+path. It never prints secret values.
+
+### Local Ollama setup
+
+The Cloud Agent scripts install Ollama, pre-pull `qwen2.5-coder:7b`, and start
+its OpenAI-compatible API on each boot:
+
+```bash
+bash .cursor/install.sh
+bash .cursor/start.sh
+curl -fsS http://127.0.0.1:11434/api/tags | jq .
+```
+
+For an existing Linux checkout:
+
+```bash
+sudo apt-get install -y zstd
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve
+# In another shell:
+ollama pull qwen2.5-coder:7b
+```
+
+The harness sends local models a compact FLE API contract rather than FLE's
+roughly 117 KB generated reference prompt. FLE tools are already present in the
+game REPL and must be called directly; generated imports of non-standard
+modules such as `flapi` are rejected and repaired before execution.
 
 ## Quickstart
 
@@ -171,6 +199,34 @@ adapt1-fle evaluate \
 Frozen evaluation sets both `allow_exploration: false` and
 `update_memory_state: false`, sends no Domain feedback, and performs no Memory
 writes.
+
+### Resource-bounded local research protocol
+
+For Adapt accounts with a 500-record / 2,000-query cap, the bundled local study
+uses a fresh versioned Domain and domain-scoped Memory:
+
+```bash
+adapt1-fle train \
+  --curriculum configs/curriculum.local-research.v1.yaml \
+  --steps 6
+
+adapt1-fle evaluate \
+  --curriculum configs/curriculum.local-research.v1.yaml \
+  --arm baseline \
+  --arm warm_frozen \
+  --arm domain_only \
+  --arm memory_only \
+  --episodes 3 \
+  --steps 6 \
+  --continue-on-error
+```
+
+The planned maximum is 48 records (24 Domain feedback + at most 24 selective
+Memory writes) and 192 queries (48 during training and 144 during frozen
+evaluation). Baseline makes no Adapt calls. The two held-out tasks and all four
+arms use the same model, prompt, FLE version, trajectory length, and scoring
+contract. Three episodes per task are a research preview, not high-powered
+evidence; reports retain Wilson intervals and operational failures.
 
 ### 6. Generate a report
 

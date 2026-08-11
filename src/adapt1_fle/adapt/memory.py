@@ -21,8 +21,9 @@ from adapt1_fle.models import (
 class FactorioMemory:
     """Query useful evidence and avoid flooding Memory with every transition."""
 
-    def __init__(self, client: AdaptClient, *, top_k: int = 8) -> None:
+    def __init__(self, client: AdaptClient, *, namespace: str, top_k: int = 8) -> None:
         self.client = client
+        self.namespace = namespace
         self.top_k = top_k
         self._stored_fingerprints: set[str] = set()
         self._error_counts: Counter[str] = Counter()
@@ -38,6 +39,7 @@ class FactorioMemory:
             top_k=self.top_k,
             metadata_filter={
                 "application": "adapt1-fle",
+                "domain_id": self.namespace,
                 "task_key": state.task_key,
             },
             frozen=frozen,
@@ -75,6 +77,7 @@ class FactorioMemory:
             response="Retain as scoped Factorio strategy evidence.",
             context={
                 "application": "adapt1-fle",
+                "domain_id": self.namespace,
                 "run_id": run_id,
                 "task_key": before.task_key,
                 "phase": before.phase,

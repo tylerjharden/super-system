@@ -61,9 +61,9 @@ class Settings(BaseModel):
 
     adapt_base_url: str = "https://rei-neuroadapt-api.reilabs.org"
     adapt_api_key: SecretStr | None = None
-    domain_id: str = "factorio-strategy-v2"
+    domain_id: str = "factorio-strategy-v3"
     domain_config_path: Path = Path("configs/domain.factorio.v1.yaml")
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "ollama-qwen2.5-coder:7b"
     env_id: str = "iron_ore_throughput"
     mode: RunMode = RunMode.BASELINE
     ledger_root: Path = Path(".fle/adapt1/runs")
@@ -72,7 +72,7 @@ class Settings(BaseModel):
     max_workers: int = Field(default=1, ge=1, le=64)
     memory_enabled: bool = True
     adapt_top_k: int = Field(default=12, ge=1, le=100)
-    request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    request_timeout_seconds: float = Field(default=120.0, gt=0, le=300)
     read_retry_attempts: int = Field(default=4, ge=1, le=10)
     run_id: str | None = None
 

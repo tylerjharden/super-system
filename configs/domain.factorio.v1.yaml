@@ -1,5 +1,5 @@
-revision: "2"
-domain_id: factorio-strategy-v2
+revision: "3"
+domain_id: factorio-strategy-v3
 description: >-
   Select high-level factory strategies from public FLE observations and revise
   their support from exact execution outcomes across ordered Factorio episodes.

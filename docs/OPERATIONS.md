@@ -148,9 +148,19 @@ supported key is visible to the process.
 
 ### Missing model credential
 
-The default `claude-*` model requires `ANTHROPIC_API_KEY`. OpenRouter model
-names containing `/` require `OPEN_ROUTER_API_KEY`. Baseline static smoke does
-not require a model key.
+The default `ollama-qwen2.5-coder:7b` model requires a running local Ollama API
+and the pre-pulled model, but no model API key:
+
+```bash
+ollama serve
+ollama pull qwen2.5-coder:7b
+curl -fsS http://127.0.0.1:11434/api/tags | jq .
+adapt1-fle doctor
+```
+
+Hosted `claude-*` models require `ANTHROPIC_API_KEY`. OpenRouter model names
+containing `/` require `OPEN_ROUTER_API_KEY`. Baseline static smoke does not
+require any model.
 
 ## Data handling
 

@@ -66,7 +66,7 @@ def make_controller(
 ) -> AdaptiveController:
     definition = load_domain_definition("configs/domain.factorio.v1.yaml")
     domain = FactorioDomain(client, definition, domain_id="factorio-test")
-    memory = FactorioMemory(client)
+    memory = FactorioMemory(client, namespace="factorio-test")
     return AdaptiveController(
         mode=mode,
         run_id="run-1",
@@ -87,7 +87,7 @@ async def test_training_binds_query_to_feedback_and_memory(tmp_path: Path) -> No
             json={"selected_policy": "assemble", "decision_id": "decision-1"},
         )
     )
-    respx.post(f"{BASE_URL}/api/v1/memory/query").mock(
+    memory_query = respx.post(f"{BASE_URL}/api/v1/memory/query").mock(
         return_value=httpx.Response(
             200,
             json={"memory_context": "Use direct insertion for bootstrap."},
@@ -120,10 +120,14 @@ async def test_training_binds_query_to_feedback_and_memory(tmp_path: Path) -> No
         )
 
     feedback_body = json.loads(feedback.calls[0].request.content)
+    memory_query_body = json.loads(memory_query.calls[0].request.content)
+    memory_store_body = json.loads(memory_store.calls[0].request.content)
     assert feedback_body["decision_id"] == "decision-1"
     assert feedback_body["policy"] == "assemble"
     assert feedback_body["values"]["step_reward"] == 1.0
     assert feedback_body["values"]["terminal"] is True
+    assert memory_query_body["metadata_filter"]["domain_id"] == "factorio-test"
+    assert memory_store_body["context"]["domain_id"] == "factorio-test"
     assert memory_store.called
     event = next(event for event in ledger.read_events() if event["kind"] == "interaction")
     assert event["selection"]["source"] == "adapt_1"

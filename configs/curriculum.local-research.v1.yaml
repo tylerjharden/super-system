@@ -1,0 +1,24 @@
+revision: "local-research-1"
+description: >-
+  Resource-bounded local-model study: expose Adapt-1 to extraction and basic
+  processing, then evaluate frozen transfer on unseen mechanics tasks. With
+  six steps per run this curriculum uses 24 Domain feedback records; selective
+  Memory can add at most 24 more records.
+stages:
+  - name: extraction
+    episodes_per_task: 2
+    tasks:
+      - iron_ore_throughput
+  - name: processing
+    episodes_per_task: 2
+    tasks:
+      - iron_plate_throughput
+held_out_tasks:
+  - iron_gear_wheel_throughput
+  - stone_wall_throughput
+transfer_tasks: []
+benchmark_arms:
+  - baseline
+  - warm_frozen
+  - domain_only
+  - memory_only

@@ -121,6 +121,10 @@ limited to:
 Local fingerprints prevent duplicate writes inside a process. Raw observations
 are not indiscriminately stored.
 
+Every Memory query and write is also scoped by the versioned Domain ID. This
+prevents evidence from an older contract, pilot run, or another cold Domain
+from leaking into a warm-frozen comparison.
+
 ## State lifecycle
 
 - Training reuses one Domain across curriculum episodes with one writer.

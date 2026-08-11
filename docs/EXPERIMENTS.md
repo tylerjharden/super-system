@@ -67,6 +67,23 @@ Diagnostics:
 Pass-rate reports use a Wilson 95% interval. Small samples must not be presented
 as conclusive.
 
+## Local-model research preview
+
+`configs/curriculum.local-research.v1.yaml` is the reproducible,
+resource-bounded protocol for Cloud Agents without a hosted-model key. It uses
+Ollama `qwen2.5-coder:7b`, two six-step training tasks, two held-out mechanics
+tasks, three episodes per task, and four frozen comparison arms:
+
+- `baseline`: deterministic public-phase controller, no Adapt calls;
+- `warm_frozen`: trained Domain plus domain-scoped Memory;
+- `domain_only`: trained Domain without Memory;
+- `memory_only`: deterministic controller plus domain-scoped Memory.
+
+At six steps, the protocol plans at most 48 records and 192 queries. Exact
+Ollama digest/quantization metadata is stored in each run manifest and included
+in the comparison fingerprint. The local API prompt is compact enough to fit
+the model context and uses only public FLE tool semantics.
+
 ## Run sequence
 
 ```bash
