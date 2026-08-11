@@ -76,13 +76,8 @@ fi
 # shellcheck disable=SC1091
 . .venv/bin/activate
 uv pip install -U pip
-# a2a-sdk<1.0.0: FLE 0.4.3 imports a2a.types.TextPart, which was removed in
-# a2a-sdk 1.0.0 (released after FLE 0.4.3). Pin to the last compatible line.
-uv pip install \
-  'factorio-learning-environment[eval]>=0.4.3' \
-  'a2a-sdk<1.0.0' \
-  httpx pydantic pyyaml python-dotenv tenacity anthropic openai \
-  pytest pytest-asyncio respx
+# Project metadata owns the FLE compatibility pin and development tooling.
+uv pip install -e "$REPO_DIR[dev]"
 
 echo "==> [8/8] Local config / data dirs"
 mkdir -p .fle configs
