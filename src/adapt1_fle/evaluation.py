@@ -50,6 +50,7 @@ class BenchmarkSummary(BaseModel):
     comparison_fingerprint: str | None
     total_runs: int = Field(ge=0)
     arms: dict[str, ArmMetrics]
+    task_arms: dict[str, dict[str, ArmMetrics]]
     runs: list[RunMetrics]
 
 
@@ -60,6 +61,9 @@ def build_benchmark_summary(
 ) -> BenchmarkSummary:
     root = Path(ledger_root)
     grouped: defaultdict[str, list[tuple[RunMetrics, dict[str, Any]]]] = defaultdict(list)
+    task_grouped: defaultdict[tuple[str, str], list[tuple[RunMetrics, dict[str, Any]]]] = (
+        defaultdict(list)
+    )
     all_metrics: list[RunMetrics] = []
     experiment_ids: set[str] = set()
     fingerprints: set[str] = set()
@@ -81,6 +85,7 @@ def build_benchmark_summary(
             metrics = summarize_run(ledger)
             arm = arm_value
             grouped[arm].append((metrics, manifest))
+            task_grouped[(str(manifest.get("env_id", "unknown")), arm)].append((metrics, manifest))
             all_metrics.append(metrics)
             experiment_ids.add(manifest_experiment)
             fingerprints.add(fingerprint)
@@ -95,12 +100,16 @@ def build_benchmark_summary(
     resolved_fingerprint = next(iter(fingerprints), None)
 
     arms = {arm: _summarize_arm(arm, values) for arm, values in sorted(grouped.items())}
+    task_arms: defaultdict[str, dict[str, ArmMetrics]] = defaultdict(dict)
+    for (task, arm), values in sorted(task_grouped.items()):
+        task_arms[task][arm] = _summarize_arm(arm, values)
     return BenchmarkSummary(
         generated_from=str(root),
         experiment_id=resolved_experiment,
         comparison_fingerprint=resolved_fingerprint,
         total_runs=len(all_metrics),
         arms=arms,
+        task_arms=dict(task_arms),
         runs=all_metrics,
     )
 

@@ -78,10 +78,12 @@ def test_benchmark_summary_and_report_keep_arms_separate(tmp_path: Path) -> None
     assert summary.arms["baseline"].pass_rate == 0
     assert summary.arms["warm_frozen"].pass_rate == 1
     assert summary.arms["warm_frozen"].mean_final_score == 16
+    assert summary.task_arms["iron_plate_throughput"]["warm_frozen"].pass_rate == 1
     assert json_path.exists()
     markdown = markdown_path.read_text(encoding="utf-8")
     assert "| baseline |" in markdown
     assert "| warm_frozen |" in markdown
+    assert "## Per-task results" in markdown
     assert "does not assert state of the art" in markdown
 
 

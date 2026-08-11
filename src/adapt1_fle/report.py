@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from adapt1_fle.evaluation import BenchmarkSummary
+from adapt1_fle.evaluation import ArmMetrics, BenchmarkSummary
 
 
 def write_report(
@@ -33,22 +33,17 @@ def render_markdown(summary: BenchmarkSummary) -> str:
         f"Experiment: **{summary.experiment_id or 'none selected'}**",
         f"Comparison fingerprint: `{summary.comparison_fingerprint or 'none'}`",
         "",
-        "| Arm | N | Pass rate (95% CI) | Final score | Automated score | "
-        "Execution errors | Operational failures | Adapt selections | Fallbacks |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        *_table_header(),
     ]
     for arm, metrics in summary.arms.items():
-        lines.append(
-            f"| {arm} | {metrics.sample_count} | "
-            f"{metrics.pass_rate:.1%} "
-            f"({metrics.pass_rate_ci95_low:.1%}-{metrics.pass_rate_ci95_high:.1%}) | "
-            f"{metrics.mean_final_score:.3f} | "
-            f"{metrics.mean_automated_score:.3f} | "
-            f"{metrics.execution_error_rate:.1%} | "
-            f"{metrics.operational_failure_rate:.1%} | "
-            f"{metrics.adapt_selection_rate:.1%} | "
-            f"{metrics.fallback_rate:.1%} |"
-        )
+        lines.append(_arm_row(arm, metrics))
+
+    lines.extend(["", "## Per-task results", ""])
+    for task, arms in summary.task_arms.items():
+        lines.extend([f"### `{task}`", "", *_table_header()])
+        for arm, metrics in arms.items():
+            lines.append(_arm_row(arm, metrics))
+        lines.append("")
 
     lines.extend(
         [
@@ -66,6 +61,28 @@ def render_markdown(summary: BenchmarkSummary) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _table_header() -> list[str]:
+    return [
+        "| Arm | N | Pass rate (95% CI) | Final score | Automated score | "
+        "Execution errors | Operational failures | Adapt selections | Fallbacks |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+
+
+def _arm_row(arm: str, metrics: ArmMetrics) -> str:
+    return (
+        f"| {arm} | {metrics.sample_count} | "
+        f"{metrics.pass_rate:.1%} "
+        f"({metrics.pass_rate_ci95_low:.1%}-{metrics.pass_rate_ci95_high:.1%}) | "
+        f"{metrics.mean_final_score:.3f} | "
+        f"{metrics.mean_automated_score:.3f} | "
+        f"{metrics.execution_error_rate:.1%} | "
+        f"{metrics.operational_failure_rate:.1%} | "
+        f"{metrics.adapt_selection_rate:.1%} | "
+        f"{metrics.fallback_rate:.1%} |"
+    )
 
 
 def _atomic_write(path: Path, content: str) -> None:
