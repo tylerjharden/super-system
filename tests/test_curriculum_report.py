@@ -128,6 +128,8 @@ def _completed_run(
             "run_id": run_id,
             "mode": "frozen" if arm != "baseline" else "baseline",
             "benchmark_arm": arm,
+            "experiment_id": "experiment-1",
+            "comparison_fingerprint": "fingerprint-1",
             "env_id": "iron_plate_throughput",
         },
     )

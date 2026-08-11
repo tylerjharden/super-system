@@ -133,10 +133,15 @@ def summarize_run(ledger: RunLedger) -> RunMetrics:
         if completion
         else (interactions[-1].after_state.automated_score if interactions else 0.0)
     )
+    ambiguous_write_count = sum(_ambiguous_writes(record) for record in interactions)
+    completion_status = completion.status if completion else "incomplete"
 
     return RunMetrics(
         run_id=run_id,
         mode=mode,
+        completion_status=completion_status,
+        operational_failure=completion_status in {"failed", "incomplete"}
+        or ambiguous_write_count > 0,
         steps=len(interactions),
         success=completion.success if completion else False,
         final_score=final_score,
@@ -151,6 +156,7 @@ def summarize_run(ledger: RunLedger) -> RunMetrics:
         ),
         abstention_count=sum(record.selection.abstained for record in interactions),
         execution_error_count=sum(record.execution.error_occurred for record in interactions),
+        ambiguous_write_count=ambiguous_write_count,
         token_count=sum(record.generated_policy.total_tokens for record in interactions),
         model_latency_seconds=sum(
             record.generated_policy.latency_seconds for record in interactions
@@ -183,6 +189,13 @@ def _adapt_latency(record: InteractionRecord) -> float:
         record.memory_write_exchange,
     )
     return sum(exchange.elapsed_seconds for exchange in exchanges if exchange is not None)
+
+
+def _ambiguous_writes(record: InteractionRecord) -> int:
+    return sum(
+        exchange is not None and exchange.ambiguous
+        for exchange in (record.feedback_exchange, record.memory_write_exchange)
+    )
 
 
 def _validated_sequence(path: Path) -> int:

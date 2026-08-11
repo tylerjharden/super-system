@@ -192,6 +192,8 @@ class RunMetrics(StrictModel):
 
     run_id: str
     mode: str
+    completion_status: str
+    operational_failure: bool
     steps: int
     success: bool
     final_score: float
@@ -202,6 +204,7 @@ class RunMetrics(StrictModel):
     fallback_count: int
     abstention_count: int
     execution_error_count: int
+    ambiguous_write_count: int
     token_count: int
     model_latency_seconds: float
     adapt_latency_seconds: float

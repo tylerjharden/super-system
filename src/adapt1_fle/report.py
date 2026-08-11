@@ -30,10 +30,12 @@ def render_markdown(summary: BenchmarkSummary) -> str:
         "# Adapt-1 x FLE benchmark",
         "",
         f"Runs analyzed: **{summary.total_runs}**",
+        f"Experiment: **{summary.experiment_id or 'none selected'}**",
+        f"Comparison fingerprint: `{summary.comparison_fingerprint or 'none'}`",
         "",
         "| Arm | N | Pass rate (95% CI) | Final score | Automated score | "
-        "Execution errors | Adapt selections | Fallbacks |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "Execution errors | Operational failures | Adapt selections | Fallbacks |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for arm, metrics in summary.arms.items():
         lines.append(
@@ -43,6 +45,7 @@ def render_markdown(summary: BenchmarkSummary) -> str:
             f"{metrics.mean_final_score:.3f} | "
             f"{metrics.mean_automated_score:.3f} | "
             f"{metrics.execution_error_rate:.1%} | "
+            f"{metrics.operational_failure_rate:.1%} | "
             f"{metrics.adapt_selection_rate:.1%} | "
             f"{metrics.fallback_rate:.1%} |"
         )

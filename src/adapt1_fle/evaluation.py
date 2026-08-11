@@ -34,6 +34,9 @@ class ArmMetrics(BaseModel):
     adapt_selection_rate: float = Field(ge=0, le=1)
     fallback_rate: float = Field(ge=0, le=1)
     abstention_rate: float = Field(ge=0, le=1)
+    operational_failure_count: int = Field(ge=0)
+    operational_failure_rate: float = Field(ge=0, le=1)
+    ambiguous_write_count: int = Field(ge=0)
     total_tokens: int = Field(ge=0)
     total_model_latency_seconds: float = Field(ge=0)
     total_adapt_latency_seconds: float = Field(ge=0)
@@ -43,29 +46,59 @@ class BenchmarkSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     generated_from: str
+    experiment_id: str | None
+    comparison_fingerprint: str | None
     total_runs: int = Field(ge=0)
     arms: dict[str, ArmMetrics]
     runs: list[RunMetrics]
 
 
-def build_benchmark_summary(ledger_root: str | Path) -> BenchmarkSummary:
+def build_benchmark_summary(
+    ledger_root: str | Path,
+    *,
+    experiment_id: str | None = None,
+) -> BenchmarkSummary:
     root = Path(ledger_root)
     grouped: defaultdict[str, list[tuple[RunMetrics, dict[str, Any]]]] = defaultdict(list)
     all_metrics: list[RunMetrics] = []
+    experiment_ids: set[str] = set()
+    fingerprints: set[str] = set()
     if root.exists():
         for run_dir in sorted(root.iterdir()):
             if not run_dir.is_dir() or not (run_dir / "manifest.json").exists():
                 continue
             manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+            manifest_experiment = manifest.get("experiment_id")
+            arm_value = manifest.get("benchmark_arm")
+            if not isinstance(manifest_experiment, str) or not isinstance(arm_value, str):
+                continue
+            if experiment_id is not None and manifest_experiment != experiment_id:
+                continue
+            fingerprint = manifest.get("comparison_fingerprint")
+            if not isinstance(fingerprint, str):
+                raise ValueError(f"benchmark run lacks comparison_fingerprint: {run_dir}")
             ledger = RunLedger.open(run_dir)
             metrics = summarize_run(ledger)
-            arm = str(manifest.get("benchmark_arm", manifest.get("mode", "unknown")))
+            arm = arm_value
             grouped[arm].append((metrics, manifest))
             all_metrics.append(metrics)
+            experiment_ids.add(manifest_experiment)
+            fingerprints.add(fingerprint)
+
+    if experiment_id is None and len(experiment_ids) > 1:
+        raise ValueError(
+            "ledger root contains multiple experiments; select one with --experiment-id"
+        )
+    if len(fingerprints) > 1:
+        raise ValueError("experiment mixes incompatible comparison fingerprints")
+    resolved_experiment = experiment_id or next(iter(experiment_ids), None)
+    resolved_fingerprint = next(iter(fingerprints), None)
 
     arms = {arm: _summarize_arm(arm, values) for arm, values in sorted(grouped.items())}
     return BenchmarkSummary(
         generated_from=str(root),
+        experiment_id=resolved_experiment,
+        comparison_fingerprint=resolved_fingerprint,
         total_runs=len(all_metrics),
         arms=arms,
         runs=all_metrics,
@@ -118,6 +151,13 @@ def _summarize_arm(
         abstention_rate=(
             sum(item.abstention_count for item in metrics) / total_steps if total_steps else 0.0
         ),
+        operational_failure_count=sum(item.operational_failure for item in metrics),
+        operational_failure_rate=(
+            sum(item.operational_failure for item in metrics) / sample_count
+            if sample_count
+            else 0.0
+        ),
+        ambiguous_write_count=sum(item.ambiguous_write_count for item in metrics),
         total_tokens=sum(item.token_count for item in metrics),
         total_model_latency_seconds=sum(item.model_latency_seconds for item in metrics),
         total_adapt_latency_seconds=sum(item.adapt_latency_seconds for item in metrics),

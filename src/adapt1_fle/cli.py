@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="run one Factorio trajectory")
     _add_run_arguments(run)
     run.add_argument("--benchmark-arm")
+    run.add_argument("--experiment-id")
 
     train = commands.add_parser("train", help="run or resume curriculum training")
     train.add_argument("--curriculum", default="configs/curriculum.v1.yaml")
@@ -83,6 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = commands.add_parser("report", help="aggregate immutable run ledgers")
     report.add_argument("--ledger-root", default=None)
+    report.add_argument("--experiment-id", default=None)
     report.add_argument("--output", default="reports/latest")
     return parser
 
@@ -246,6 +248,7 @@ async def run_command(arguments: argparse.Namespace) -> int:
         enable_domain=not arguments.no_domain,
         enable_memory=not arguments.no_memory,
         benchmark_arm=arguments.benchmark_arm,
+        manifest_extra={"experiment_id": arguments.experiment_id},
     )
     print(
         json.dumps(
@@ -299,6 +302,7 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
     curriculum = load_curriculum(arguments.curriculum)
     arms = arguments.arm or [BenchmarkArm.BASELINE.value, BenchmarkArm.WARM_FROZEN.value]
     tasks = arguments.task or curriculum.held_out_tasks
+    experiment_id = _new_run_id("experiment")
     for arm_name in arms:
         arm = BenchmarkArm(arm_name)
         for env_id in tasks:
@@ -321,6 +325,7 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
                         "held_out": env_id in curriculum.held_out_tasks,
                         "evaluation_episode": episode,
                         "curriculum_revision": curriculum.revision,
+                        "experiment_id": experiment_id,
                     },
                 )
                 print(
@@ -333,7 +338,10 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
 def report_command(arguments: argparse.Namespace) -> int:
     settings = Settings.load(arguments.config)
     ledger_root = arguments.ledger_root or settings.ledger_root
-    summary = build_benchmark_summary(ledger_root)
+    summary = build_benchmark_summary(
+        ledger_root,
+        experiment_id=arguments.experiment_id,
+    )
     json_path, markdown_path = write_report(summary, arguments.output)
     print(
         json.dumps(
@@ -379,6 +387,10 @@ async def execute_run(
         "git_sha": _git_sha(),
         "settings": settings.safe_dump(),
         "config_hash": config_hash(settings),
+        "comparison_fingerprint": comparison_fingerprint(
+            settings,
+            domain_contract_hash=definition.contract_hash,
+        ),
     }
     if manifest_extra:
         manifest.update(manifest_extra)
@@ -542,4 +554,21 @@ def _git_sha() -> str:
 
 def config_hash(settings: Settings) -> str:
     encoded = json.dumps(settings.safe_dump(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def comparison_fingerprint(
+    settings: Settings,
+    *,
+    domain_contract_hash: str,
+) -> str:
+    contract = {
+        "model": settings.model,
+        "trajectory_length": settings.trajectory_length,
+        "fle_version": importlib.metadata.version("factorio-learning-environment"),
+        "domain_contract_hash": domain_contract_hash,
+        "reward_contract": "factorio-public-reward-v1",
+        "prompt_contract": "adapt1-fle-prompt-v1",
+    }
+    encoded = json.dumps(contract, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
