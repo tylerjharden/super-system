@@ -360,5 +360,7 @@ def _is_subset(expected: Any, actual: Any) -> bool:
             key in actual and _is_subset(value, actual[key]) for key, value in expected.items()
         )
     if isinstance(expected, list):
-        return bool(expected == actual)
+        if not isinstance(actual, list) or len(actual) < len(expected):
+            return False
+        return all(_is_subset(item, actual[index]) for index, item in enumerate(expected))
     return bool(expected == actual)
