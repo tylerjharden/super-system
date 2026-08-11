@@ -206,27 +206,30 @@ For Adapt accounts with a 500-record / 2,000-query cap, the bundled local study
 uses a fresh versioned Domain and domain-scoped Memory:
 
 ```bash
-adapt1-fle train \
+adapt1-fle --config configs/local-research.yaml train \
   --curriculum configs/curriculum.local-research.v1.yaml \
-  --steps 6
+  --steps 4
 
-adapt1-fle evaluate \
+adapt1-fle --config configs/local-research.yaml evaluate \
   --curriculum configs/curriculum.local-research.v1.yaml \
   --arm baseline \
   --arm warm_frozen \
   --arm domain_only \
   --arm memory_only \
-  --episodes 3 \
-  --steps 6 \
+  --task iron_ore_throughput \
+  --task iron_gear_wheel_throughput \
+  --episodes 5 \
+  --steps 4 \
   --continue-on-error
 ```
 
-The planned maximum is 48 records (24 Domain feedback + at most 24 selective
-Memory writes) and 192 queries (48 during training and 144 during frozen
-evaluation). Baseline makes no Adapt calls. The two held-out tasks and all four
-arms use the same model, prompt, FLE version, trajectory length, and scoring
-contract. Three episodes per task are a research preview, not high-powered
-evidence; reports retain Wilson intervals and operational failures.
+The planned maximum is 64 records (32 Domain feedback + at most 32 selective
+Memory writes) and 224 queries (64 during training and 160 during frozen
+evaluation). Baseline makes no Adapt calls. The exposed `iron_ore` retention
+task, held-out `iron_gear_wheel` transfer task, and all four arms use the same
+model, prompt, FLE version, trajectory length, and scoring contract. Five
+episodes per task remain a research preview; reports retain Wilson intervals
+and operational failures.
 
 ### 6. Generate a report
 
