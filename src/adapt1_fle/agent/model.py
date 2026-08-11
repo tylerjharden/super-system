@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import time
 from collections.abc import Sequence
 from typing import Any, Protocol
@@ -11,6 +12,15 @@ from fle.agents.llm.api_factory import APIFactory
 from fle.agents.llm.parsing import parse_response
 
 from adapt1_fle.models import GeneratedPolicy
+
+_REPAIR_PROMPT = (
+    "Your previous reply was not usable. Reply with exactly one fenced "
+    "```python``` block containing the next Factorio Learning Environment action. "
+    "Use only FLE tools already available in the REPL. Do not redefine helpers, "
+    "paste JSON state, or include prose outside the fence."
+)
+
+_FENCED_PYTHON = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
 
 
 class PolicyGenerationError(RuntimeError):
@@ -34,46 +44,67 @@ class FLEPolicyGenerator:
         max_tokens: int = 4096,
         temperature: float = 0.2,
         api_key_config_file: str | None = None,
+        parse_retries: int = 1,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.parse_retries = max(parse_retries, 0)
         self._factory = APIFactory(model, api_key_config_file=api_key_config_file)
 
     async def generate(self, messages: Sequence[dict[str, str]]) -> GeneratedPolicy:
         started = time.monotonic()
-        response = await self._factory.acall(
-            messages=list(messages),
-            n_samples=1,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            model=self.model,
-        )
-        latency = time.monotonic() - started
-        policy = parse_response(response)
-        if policy is None or not policy.code.strip():
-            raise PolicyGenerationError(
-                "model response did not contain Python in a fenced code block"
+        working = [dict(message) for message in messages]
+        prompt_tokens = 0
+        completion_tokens = 0
+        raw_content = ""
+        last_error = "model response did not contain Python in a fenced code block"
+
+        for attempt in range(self.parse_retries + 1):
+            response = await self._factory.acall(
+                messages=working,
+                n_samples=1,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                model=self.model,
             )
-        validate_python(policy.code)
+            raw_content = _response_content(response)
+            usage = getattr(response, "usage", None)
+            prompt_tokens += _integer_attribute(usage, "prompt_tokens", "input_tokens")
+            completion_tokens += _integer_attribute(
+                usage, "completion_tokens", "output_tokens"
+            )
 
-        usage = getattr(response, "usage", None)
-        prompt_tokens = _integer_attribute(usage, "prompt_tokens", "input_tokens")
-        completion_tokens = _integer_attribute(usage, "completion_tokens", "output_tokens")
-        total_tokens = _integer_attribute(usage, "total_tokens")
-        if total_tokens == 0:
-            total_tokens = prompt_tokens + completion_tokens
+            code = _extract_python_code(response, raw_content)
+            if code is None:
+                last_error = "model response did not contain Python in a fenced code block"
+            else:
+                try:
+                    validate_python(code)
+                except PolicyGenerationError as error:
+                    last_error = str(error)
+                else:
+                    total_tokens = prompt_tokens + completion_tokens
+                    return GeneratedPolicy(
+                        code=code,
+                        raw_content=raw_content,
+                        model=self.model,
+                        input_messages=[dict(message) for message in messages],
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        latency_seconds=time.monotonic() - started,
+                    )
 
-        return GeneratedPolicy(
-            code=policy.code,
-            raw_content=_response_content(response),
-            model=self.model,
-            input_messages=[dict(message) for message in messages],
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            latency_seconds=latency,
-        )
+            if attempt >= self.parse_retries:
+                break
+            working = [
+                *working,
+                {"role": "assistant", "content": raw_content or "(empty response)"},
+                {"role": "user", "content": _REPAIR_PROMPT},
+            ]
+
+        raise PolicyGenerationError(last_error)
 
 
 class StaticPolicyGenerator:
@@ -103,6 +134,22 @@ def validate_python(code: str) -> None:
         ast.parse(code)
     except SyntaxError as error:
         raise PolicyGenerationError(f"generated policy is invalid Python: {error}") from error
+
+
+def _extract_python_code(response: Any, raw_content: str) -> str | None:
+    """Prefer FLE's parser, then fall back to the last fenced Python block."""
+
+    try:
+        policy = parse_response(response)
+    except Exception:
+        policy = None
+    if policy is not None and policy.code.strip():
+        return policy.code
+    matches = [match.group(1).strip() for match in _FENCED_PYTHON.finditer(raw_content)]
+    for candidate in reversed(matches):
+        if candidate:
+            return candidate
+    return None
 
 
 def _integer_attribute(value: Any, *names: str) -> int:

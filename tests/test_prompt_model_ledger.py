@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from adapt1_fle.agent.model import PolicyGenerationError, validate_python
+from adapt1_fle.agent.model import (
+    PolicyGenerationError,
+    _extract_python_code,
+    validate_python,
+)
 from adapt1_fle.agent.prompt import ConversationWindow
 from adapt1_fle.ledger import LedgerCorruptionError, RunLedger, redact
 
@@ -14,6 +18,15 @@ def test_python_validation_blocks_invalid_or_oversized_code() -> None:
         validate_python("x" * 10_001)
 
     validate_python("print(inspect_inventory())")
+
+
+def test_extract_python_code_uses_last_fenced_block() -> None:
+    raw = (
+        "Here is an unused sketch:\n```python\npass\n```\n"
+        "Final action:\n```python\nprint(inspect_inventory())\n```\n"
+    )
+
+    assert _extract_python_code(object(), raw) == "print(inspect_inventory())"
 
 
 def test_conversation_window_preserves_system_and_complete_recent_turns() -> None:
