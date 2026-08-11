@@ -175,10 +175,13 @@ async def doctor(config_path: str) -> int:
             "authentication_error": auth_error,
         }
     credential_name = _model_credential_name(settings.model)
+    model_credential_present = (
+        bool(os.getenv(credential_name)) or credential_name == "OLLAMA_API_KEY"
+    )
     checks["model"] = {
         "model": settings.model,
         "credential_name": credential_name,
-        "credential_present": bool(os.getenv(credential_name)),
+        "credential_present": model_credential_present,
     }
     checks["ledger"] = {
         "ok": _writable_parent(settings.ledger_root),
@@ -189,6 +192,8 @@ async def doctor(config_path: str) -> int:
         and checks["fle"]["ok"]
         and checks["factorio"]["ok"]
         and checks["adapt_1"]["ok"]
+        and (not settings.adapt_enabled or checks["adapt_1"]["authentication_ok"])
+        and checks["model"]["credential_present"]
         and checks["ledger"]["ok"]
     )
     checks["ok"] = required_ok
@@ -266,7 +271,10 @@ async def train_command(arguments: argparse.Namespace) -> int:
     overrides = {"mode": RunMode.TRAIN, "trajectory_length": arguments.steps}
     settings = Settings.load(arguments.config, overrides=overrides)
     settings.validate_for_execution()
-    curriculum = load_curriculum(arguments.curriculum)
+    curriculum = load_curriculum(
+        arguments.curriculum,
+        available_tasks=list_available_environments(),
+    )
     jobs = pending_curriculum_jobs(curriculum, settings.ledger_root)
     if arguments.limit is not None:
         jobs = jobs[: arguments.limit]
@@ -299,7 +307,10 @@ async def train_command(arguments: argparse.Namespace) -> int:
 
 async def evaluate_command(arguments: argparse.Namespace) -> int:
     settings = Settings.load(arguments.config)
-    curriculum = load_curriculum(arguments.curriculum)
+    curriculum = load_curriculum(
+        arguments.curriculum,
+        available_tasks=list_available_environments(),
+    )
     arms = arguments.arm or [BenchmarkArm.BASELINE.value, BenchmarkArm.WARM_FROZEN.value]
     tasks = arguments.task or curriculum.held_out_tasks
     experiment_id = _new_run_id("experiment")

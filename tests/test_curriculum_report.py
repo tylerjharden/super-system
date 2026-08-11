@@ -58,6 +58,14 @@ benchmark_arms: [baseline, warm_frozen]
     assert [job.episode_index for job in pending] == [1]
 
 
+def test_curriculum_validates_task_registry() -> None:
+    with pytest.raises(ValueError, match="unknown FLE tasks"):
+        load_curriculum(
+            "configs/curriculum.v1.yaml",
+            available_tasks={"iron_ore_throughput"},
+        )
+
+
 def test_benchmark_summary_and_report_keep_arms_separate(tmp_path: Path) -> None:
     runs = tmp_path / "runs"
     _completed_run(runs, "baseline-1", "baseline", success=False, score=2)

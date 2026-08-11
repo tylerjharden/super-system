@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Collection
 from enum import StrEnum
 from pathlib import Path
 
@@ -82,11 +83,25 @@ class CurriculumJob(BaseModel):
     episode_index: int = Field(ge=0)
 
 
-def load_curriculum(path: str | Path) -> Curriculum:
+def load_curriculum(
+    path: str | Path,
+    *,
+    available_tasks: Collection[str] | None = None,
+) -> Curriculum:
     parsed = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(parsed, dict):
         raise ValueError(f"curriculum must be a mapping: {path}")
-    return Curriculum.model_validate(parsed)
+    curriculum = Curriculum.model_validate(parsed)
+    if available_tasks is not None:
+        configured = {
+            *(task for stage in curriculum.stages for task in stage.tasks),
+            *curriculum.held_out_tasks,
+            *curriculum.transfer_tasks,
+        }
+        missing = sorted(configured - set(available_tasks))
+        if missing:
+            raise ValueError(f"curriculum contains unknown FLE tasks: {missing}")
+    return curriculum
 
 
 def completed_curriculum_jobs(ledger_root: str | Path) -> set[str]:
