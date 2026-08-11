@@ -1,0 +1,6 @@
+{
+  "name": "REI Adapt-1 x FLE",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh"
+}
