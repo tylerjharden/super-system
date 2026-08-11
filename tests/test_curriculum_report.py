@@ -85,6 +85,21 @@ def test_benchmark_summary_and_report_keep_arms_separate(tmp_path: Path) -> None
     assert "does not assert state of the art" in markdown
 
 
+def test_report_rejects_mixed_comparison_protocols(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _completed_run(runs, "baseline-1", "baseline", success=False, score=2)
+    _completed_run(runs, "warm-1", "warm_frozen", success=True, score=16)
+    manifest = runs / "warm-1" / "manifest.json"
+    changed = manifest.read_text(encoding="utf-8").replace(
+        "fingerprint-1",
+        "different-fingerprint",
+    )
+    manifest.write_text(changed, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="incompatible comparison fingerprints"):
+        build_benchmark_summary(runs)
+
+
 def test_curriculum_refuses_automatic_retry_after_failure(tmp_path: Path) -> None:
     curriculum = load_curriculum("configs/curriculum.v1.yaml")
     first = curriculum.jobs()[0]
