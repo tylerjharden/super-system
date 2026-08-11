@@ -139,9 +139,7 @@ class Settings(BaseModel):
         environment = environ if environ is not None else os.environ
         for env_name, field_name in ENVIRONMENT_FIELDS.items():
             if env_name in environment:
-                data[field_name] = _coerce_environment_value(
-                    field_name, environment[env_name]
-                )
+                data[field_name] = _coerce_environment_value(field_name, environment[env_name])
 
         if "adapt_api_key" not in data:
             for alias in API_KEY_ALIASES:
