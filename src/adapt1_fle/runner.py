@@ -74,7 +74,7 @@ class TrajectoryRunner:
 
         try:
             reset_result = self.environment.reset()
-            observation = Observation.from_dict(_reset_observation(reset_result))
+            observation = _observation_from_dict(_reset_observation(reset_result))
 
             for step in range(self.trajectory_length):
                 before = compact_state(
@@ -102,7 +102,7 @@ class TrajectoryRunner:
                 obs_dict, raw_reward, terminated, truncated, info = self.environment.step(
                     Action(agent_idx=0, code=pending.generated_policy.code)
                 )
-                after_observation = Observation.from_dict(obs_dict)
+                after_observation = _observation_from_dict(obs_dict)
                 last_output = str(info.get("result", obs_dict.get("raw_text", "")))
                 last_execution_error = bool(info.get("error_occurred", False))
                 final_score = float(info.get("production_score", raw_reward))
@@ -198,6 +198,26 @@ def _reset_observation(value: Any) -> dict[str, Any]:
     if not isinstance(observation, dict):
         raise TypeError("FLE reset did not return an observation mapping")
     return observation
+
+
+def _observation_from_dict(value: dict[str, Any]) -> Observation:
+    """Normalize known FLE 0.4.x serializer/deserializer disagreements."""
+
+    normalized = dict(value)
+    research = normalized.get("research")
+    if isinstance(research, Mapping):
+        normalized_research = dict(research)
+        progress = normalized_research.get("progress")
+        if progress is None or progress == "None":
+            normalized_research["progress"] = []
+        elif isinstance(progress, Mapping):
+            normalized_research["progress"] = [
+                {"name": str(name), "value": amount} for name, amount in progress.items()
+            ]
+        if normalized_research.get("current_research") in {None, "", "None"}:
+            normalized_research["current_research"] = None
+        normalized["research"] = normalized_research
+    return Observation.from_dict(normalized)
 
 
 def _json_object(value: Any) -> JsonObject:
