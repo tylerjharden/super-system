@@ -124,15 +124,15 @@ def curriculum_job_states(ledger_root: str | Path) -> dict[str, str]:
             continue
         manifest_path = run_dir / "manifest.json"
         events_path = run_dir / "events.jsonl"
-        if not manifest_path.exists() or not events_path.exists():
+        if not manifest_path.exists():
             continue
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         job_id = manifest.get("curriculum_job_id")
         if not isinstance(job_id, str):
             continue
-        run_state = _run_state(events_path)
+        run_state = _run_state(events_path) if events_path.exists() else "blocked"
         previous = states.get(job_id)
-        if run_state == "completed" or previous is None:
+        if run_state == "blocked" or previous is None:
             states[job_id] = run_state
     return states
 

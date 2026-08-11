@@ -180,6 +180,23 @@ def test_curriculum_blocks_incomplete_wal_run(tmp_path: Path) -> None:
         pending_curriculum_jobs(curriculum, tmp_path)
 
 
+def test_curriculum_manifest_without_events_is_blocked(tmp_path: Path) -> None:
+    curriculum = load_curriculum("configs/curriculum.v1.yaml")
+    first = curriculum.jobs()[0]
+    RunLedger.create(
+        tmp_path,
+        "crashed-before-wal",
+        {
+            "run_id": "crashed-before-wal",
+            "mode": "train",
+            "curriculum_job_id": first.job_id,
+        },
+    )
+
+    with pytest.raises(BlockedCurriculumError, match=first.job_id):
+        pending_curriculum_jobs(curriculum, tmp_path)
+
+
 def test_wilson_interval_is_bounded() -> None:
     low, high = wilson_interval(8, 10)
 
