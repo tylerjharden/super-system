@@ -15,6 +15,7 @@ from fle.env.gym_env.observation_formatter import TreeObservationFormatter
 from fle.eval.tasks.task_definitions.lab_play.throughput_tasks import THROUGHPUT_TASKS
 
 from adapt1_fle.adapt.client import AdaptClientError
+from adapt1_fle.adapt.domain import DomainContractError
 from adapt1_fle.agent.controller import AdaptiveController
 from adapt1_fle.agent.model import PolicyGenerationError
 from adapt1_fle.factorio.state import compact_state
@@ -257,6 +258,8 @@ def _failure_kind(error: BaseException, phase: str) -> FailureKind:
         return FailureKind.INTERRUPTED
     if isinstance(error, AdaptClientError):
         return FailureKind.ADAPT_TRANSPORT
+    if isinstance(error, DomainContractError):
+        return FailureKind.ADAPT_CONTRACT
     if isinstance(error, PolicyGenerationError):
         return FailureKind.MODEL_OUTPUT
     if phase == "decision":

@@ -1,10 +1,12 @@
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from adapt1_fle.adapt.client import AdaptClient
 from adapt1_fle.adapt.domain import (
+    DomainContractError,
     FactorioDomain,
     load_domain_definition,
     normalize_strategy_response,
@@ -87,6 +89,14 @@ def test_execution_error_falls_back_to_debug() -> None:
     assert selection.source is SelectionSource.FALLBACK
 
 
+def test_unknown_returned_policy_is_a_contract_error() -> None:
+    with pytest.raises(DomainContractError, match="unknown policy"):
+        normalize_strategy_response(
+            {"selected_policy": "launch_rocket_immediately"},
+            state=state(),
+        )
+
+
 def test_feedback_binds_sealed_decision_and_sequential_fields() -> None:
     definition = load_domain_definition("configs/domain.factorio.v1.yaml")
     client = AdaptClient(base_url=BASE_URL, api_key="secret")
@@ -143,3 +153,19 @@ async def test_ensure_creates_only_after_not_found() -> None:
     assert status == "created"
     assert create.called
     assert create.calls[0].request.headers["Authorization"] == "Bearer secret"
+
+
+@respx.mock
+async def test_existing_domain_must_return_required_contract_fields() -> None:
+    definition = load_domain_definition("configs/domain.factorio.v1.yaml")
+    respx.get(f"{BASE_URL}/api/v1/domains/factorio-test").mock(
+        return_value=httpx.Response(
+            200,
+            json={"domain_id": "factorio-test", "description": definition.description},
+        )
+    )
+
+    async with AdaptClient(base_url=BASE_URL, api_key="secret") as client:
+        domain = FactorioDomain(client, definition, domain_id="factorio-test")
+        with pytest.raises(ValueError, match="missing required contract field schema"):
+            await domain.ensure()

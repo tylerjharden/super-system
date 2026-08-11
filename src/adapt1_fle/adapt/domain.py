@@ -49,6 +49,10 @@ PHASE_FALLBACKS = {
 }
 
 
+class DomainContractError(ValueError):
+    """A successful response violated the Factorio Domain result contract."""
+
+
 class DomainDefinition(BaseModel):
     """Local Domain contract plus non-API revision metadata."""
 
@@ -122,7 +126,11 @@ class FactorioDomain:
 
         expected = self.definition.api_payload(domain_id=self.domain_id)
         for key in ("description", "schema", "hypotheses", "query_templates", "learning"):
-            if key in remote and not _is_subset(expected[key], remote[key]):
+            if key not in remote:
+                raise ValueError(
+                    f"Domain {self.domain_id!r} is missing required contract field {key}"
+                )
+            if not _is_subset(expected[key], remote[key]):
                 raise ValueError(
                     f"Domain {self.domain_id!r} differs at {key}; use a new versioned domain_id"
                 )
@@ -220,6 +228,7 @@ def normalize_strategy_response(
 ) -> StrategySelection:
     scores = _extract_policy_scores(response)
     direct_policy = _extract_direct_policy(response)
+    _validate_strategy_response(response, scores=scores, direct_policy=direct_policy)
 
     source = SelectionSource.FALLBACK
     abstained = bool(response.get("abstained", False))
@@ -282,6 +291,34 @@ def _extract_policy_scores(response: JsonObject) -> dict[str, float]:
     if isinstance(hypotheses, list):
         _add_list_scores(scores, hypotheses)
     return scores
+
+
+def _validate_strategy_response(
+    response: JsonObject,
+    *,
+    scores: dict[str, float],
+    direct_policy: str | None,
+) -> None:
+    if direct_policy is not None and direct_policy not in STRATEGIES:
+        raise DomainContractError(f"Adapt-1 returned unknown policy {direct_policy!r}")
+
+    raw_scores = response.get("policy_scores")
+    if raw_scores is not None and not isinstance(raw_scores, dict | list):
+        raise DomainContractError("policy_scores must be an object or list")
+    if raw_scores and not scores:
+        raise DomainContractError("policy_scores contained no valid Factorio policy entries")
+
+    hypotheses = response.get("ranked_hypotheses")
+    if hypotheses is not None and not isinstance(hypotheses, list):
+        raise DomainContractError("ranked_hypotheses must be a list")
+    if hypotheses and not scores and direct_policy is None:
+        raise DomainContractError(
+            "ranked_hypotheses contained no valid Factorio strategy candidates"
+        )
+
+    decision_id = response.get("decision_id")
+    if decision_id is not None and not isinstance(decision_id, str):
+        raise DomainContractError("decision_id must be a string when returned")
 
 
 def _add_dict_scores(scores: dict[str, float], values: dict[Any, Any]) -> None:
