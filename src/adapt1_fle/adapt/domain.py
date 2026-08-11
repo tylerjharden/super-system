@@ -103,7 +103,7 @@ class FactorioDomain:
         self.domain_id = domain_id or definition.domain_id
         self.top_k = top_k
 
-    async def ensure(self) -> tuple[str, ApiExchange]:
+    async def ensure(self, *, create_if_missing: bool = True) -> tuple[str, ApiExchange]:
         """Create the Domain if absent and reject incompatible existing state."""
 
         try:
@@ -111,6 +111,10 @@ class FactorioDomain:
         except PermanentAdaptError as error:
             if error.exchange.status_code != 404:
                 raise
+            if not create_if_missing:
+                raise ValueError(
+                    f"frozen Domain {self.domain_id!r} does not exist; train or create it first"
+                ) from error
             _, exchange = await self.client.create_domain(
                 self.definition.api_payload(domain_id=self.domain_id)
             )
