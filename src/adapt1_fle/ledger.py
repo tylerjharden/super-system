@@ -19,7 +19,10 @@ from adapt1_fle.models import (
     SelectionSource,
 )
 
-SENSITIVE_KEY = re.compile(r"(authorization|api[_-]?key|secret|token|password)", re.IGNORECASE)
+SENSITIVE_KEY = re.compile(
+    r"(authorization|api[_-]?key|(^|[_-])(token|secret|password)$)",
+    re.IGNORECASE,
+)
 BEARER_VALUE = re.compile(r"(?i)\bBearer\s+\S+")
 
 
