@@ -23,13 +23,18 @@ from fle.env.gym_env.registry import get_environment_info, list_available_enviro
 from fle.env.utils.controller_loader.system_prompt_generator import SystemPromptGenerator
 
 from adapt1_fle.adapt.client import AdaptClient
-from adapt1_fle.adapt.domain import FactorioDomain, load_domain_definition
+from adapt1_fle.adapt.domain import (
+    FactorioDomain,
+    load_domain_definition,
+    normalize_strategy_response,
+)
 from adapt1_fle.adapt.memory import FactorioMemory
 from adapt1_fle.agent.controller import AdaptiveController
 from adapt1_fle.agent.model import FLEPolicyGenerator, StaticPolicyGenerator
 from adapt1_fle.agent.prompt import (
     POLICY_REQUIREMENTS,
     ConversationWindow,
+    build_step_prompt,
     build_system_prompt,
 )
 from adapt1_fle.config import RunMode, Settings
@@ -44,7 +49,8 @@ from adapt1_fle.evaluation import (
     build_benchmark_summary,
     write_experiment_plan,
 )
-from adapt1_fle.factorio.reward import calculate_reward
+from adapt1_fle.factorio.reward import EXECUTION_ERROR_PENALTY, calculate_reward
+from adapt1_fle.factorio.state import compact_state, infer_phase
 from adapt1_fle.ledger import RunLedger
 from adapt1_fle.models import RunCompletion
 from adapt1_fle.report import write_report
@@ -617,15 +623,28 @@ def comparison_fingerprint(
         "temperature": None if static_generator else 0.2,
         "max_tokens": None if static_generator else 4096,
         "trajectory_length": settings.trajectory_length,
+        "max_messages": settings.max_messages,
+        "adapt_top_k": settings.adapt_top_k,
         "fle_version": importlib.metadata.version("factorio-learning-environment"),
+        "harness_version": importlib.metadata.version("adapt1-fle"),
+        "harness_git_sha": _git_sha(),
         "domain_contract_hash": domain_contract_hash,
-        "reward_contract_hash": _source_hash(calculate_reward),
-        "prompt_contract_hash": _source_hash(build_system_prompt)
-        + hashlib.sha256(POLICY_REQUIREMENTS.encode("utf-8")).hexdigest(),
+        "reward_contract_hash": _combined_source_hash(
+            calculate_reward,
+            extra=str(EXECUTION_ERROR_PENALTY),
+        ),
+        "prompt_contract_hash": _combined_source_hash(
+            build_system_prompt,
+            build_step_prompt,
+            extra=POLICY_REQUIREMENTS,
+        ),
+        "state_contract_hash": _combined_source_hash(compact_state, infer_phase),
+        "selection_contract_hash": _combined_source_hash(normalize_strategy_response),
     }
     encoded = json.dumps(contract, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _source_hash(value: Any) -> str:
-    return hashlib.sha256(inspect.getsource(value).encode("utf-8")).hexdigest()
+def _combined_source_hash(*values: Any, extra: str = "") -> str:
+    content = "\n".join(inspect.getsource(value) for value in values) + extra
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
