@@ -162,7 +162,7 @@ def _extract_python_code(response: Any, raw_content: str) -> str | None:
         policy = parse_response(response)
     except Exception:
         policy = None
-    if policy is not None and policy.code.strip():
+    if policy is not None and isinstance(policy.code, str) and policy.code.strip():
         return policy.code
     matches = [match.group(1).strip() for match in _FENCED_PYTHON.finditer(raw_content)]
     for candidate in reversed(matches):

@@ -649,7 +649,12 @@ def model_provenance(model: str) -> dict[str, Any]:
             "runtime_ok": True,
             "model_installed": False,
         }
-    details = match.get("details") if isinstance(match.get("details"), dict) else {}
+    raw_details = match.get("details")
+    details: dict[str, Any] = (
+        {str(key): value for key, value in raw_details.items()}
+        if isinstance(raw_details, dict)
+        else {}
+    )
     return {
         "provider": "ollama",
         "model": resolved,
