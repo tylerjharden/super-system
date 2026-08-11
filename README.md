@@ -156,7 +156,8 @@ adapt1-fle train --curriculum configs/curriculum.v1.yaml
 
 Training is serial by design: Adapt's ordered online state has exactly one
 writer. The command resumes by skipping curriculum jobs with a confirmed
-completion event.
+completion event. A failed or ambiguous prior job blocks automatic rerun until
+an operator reconciles server state.
 
 ### 5. Run frozen held-out evaluation
 
@@ -175,6 +176,13 @@ writes.
 
 ```bash
 adapt1-fle report --output reports/latest
+```
+
+If the ledger root contains more than one evaluation invocation, select the
+printed experiment ID:
+
+```bash
+adapt1-fle report --experiment-id <experiment-id> --output reports/latest
 ```
 
 This writes:
@@ -227,6 +235,8 @@ controller's first required result.
   ambiguous write and stops ordered training until reconciled.
 - Safe frozen reads use bounded backoff and honor `Retry-After`.
 - Each run flushes an append-only event after every confirmed transition.
+- Decision-started, decision-prepared, and action-prepared WAL events preserve
+  exact prompts and model inputs around partial failures.
 - Checkpoints identify the last confirmed step and ambiguous interaction.
 - Adapt-enabled runs never silently degrade to baseline.
 - API keys and bearer strings are recursively redacted from manifests/events.
