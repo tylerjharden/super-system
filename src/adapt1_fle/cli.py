@@ -638,8 +638,7 @@ def model_provenance(model: str) -> dict[str, Any]:
         (
             item
             for item in models
-            if isinstance(item, dict)
-            and item.get("name") in {resolved, f"{resolved}:latest"}
+            if isinstance(item, dict) and item.get("name") in {resolved, f"{resolved}:latest"}
         ),
         None,
     )

@@ -76,9 +76,7 @@ class FLEPolicyGenerator:
             raw_content = _response_content(response)
             usage = getattr(response, "usage", None)
             prompt_tokens += _integer_attribute(usage, "prompt_tokens", "input_tokens")
-            completion_tokens += _integer_attribute(
-                usage, "completion_tokens", "output_tokens"
-            )
+            completion_tokens += _integer_attribute(usage, "completion_tokens", "output_tokens")
 
             code = _extract_python_code(response, raw_content)
             if code is None:
