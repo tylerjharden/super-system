@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from fle.env.gym_env.registry import list_available_environments
 
 from adapt1_fle.curriculum import (
     BlockedCurriculumError,
@@ -59,6 +60,12 @@ benchmark_arms: [baseline, warm_frozen]
 
 
 def test_curriculum_validates_task_registry() -> None:
+    loaded = load_curriculum(
+        "configs/curriculum.v1.yaml",
+        available_tasks=list_available_environments(),
+    )
+    assert "sufuric_acid_throughput" in loaded.held_out_tasks
+
     with pytest.raises(ValueError, match="unknown FLE tasks"):
         load_curriculum(
             "configs/curriculum.v1.yaml",
