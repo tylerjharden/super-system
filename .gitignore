@@ -10,3 +10,10 @@ configs/*.local.*
 
 # FLE / Factorio artifacts
 *.log
+reports/
+artifacts/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+*.egg-info/
