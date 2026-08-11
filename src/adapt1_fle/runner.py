@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import Any, Protocol, cast
 
 import gym
@@ -12,10 +14,13 @@ from fle.env.gym_env.observation import Observation
 from fle.env.gym_env.observation_formatter import TreeObservationFormatter
 from fle.eval.tasks.task_definitions.lab_play.throughput_tasks import THROUGHPUT_TASKS
 
+from adapt1_fle.adapt.client import AdaptClientError
 from adapt1_fle.agent.controller import AdaptiveController
+from adapt1_fle.agent.model import PolicyGenerationError
 from adapt1_fle.factorio.state import compact_state
 from adapt1_fle.models import (
     ExecutionResult,
+    FailureKind,
     InteractionIds,
     JsonObject,
     RunCompletion,
@@ -71,6 +76,8 @@ class TrajectoryRunner:
         completion_written = False
         last_execution_error = False
         last_output = ""
+        phase = "reset"
+        current_ids: InteractionIds | None = None
 
         try:
             reset_result = self.environment.reset()
@@ -92,13 +99,16 @@ class TrajectoryRunner:
                     episode_id=self.episode_id,
                     step=step,
                 )
+                current_ids = ids
                 detailed = self.formatter.format(observation).raw_str
+                phase = "decision"
                 pending = await self.controller.decide(
                     ids=ids,
                     state=before,
                     detailed_observation=detailed,
                 )
 
+                phase = "execution"
                 obs_dict, raw_reward, terminated, truncated, info = self.environment.step(
                     Action(agent_idx=0, code=pending.generated_policy.code)
                 )
@@ -131,6 +141,7 @@ class TrajectoryRunner:
                     last_execution_error=last_execution_error,
                     last_output=last_output,
                 )
+                phase = "feedback"
                 await self.controller.observe(
                     pending=pending,
                     execution=execution,
@@ -139,6 +150,7 @@ class TrajectoryRunner:
                 )
                 steps_completed = step + 1
                 observation = after_observation
+                phase = "decision"
 
                 if terminated or truncated:
                     success = bool(terminated)
@@ -157,6 +169,17 @@ class TrajectoryRunner:
             completion_written = True
             return completion
         except BaseException as error:
+            failure = {
+                "kind": "failure",
+                "run_id": self.run_id,
+                "episode_id": self.episode_id,
+                "phase": phase,
+                "failure_kind": _failure_kind(error, phase).value,
+                "error": f"{type(error).__name__}: {error}",
+                "ids": current_ids.model_dump(mode="json") if current_ids else None,
+            }
+            with suppress(OSError):
+                self.controller.ledger.append(failure)
             completion = RunCompletion(
                 run_id=self.run_id,
                 episode_id=self.episode_id,
@@ -227,3 +250,19 @@ def _json_object(value: Any) -> JsonObject:
         if isinstance(serialized, dict):
             return serialized
     return {"value": str(value)}
+
+
+def _failure_kind(error: BaseException, phase: str) -> FailureKind:
+    if isinstance(error, asyncio.CancelledError | KeyboardInterrupt):
+        return FailureKind.INTERRUPTED
+    if isinstance(error, AdaptClientError):
+        return FailureKind.ADAPT_TRANSPORT
+    if isinstance(error, PolicyGenerationError):
+        return FailureKind.MODEL_OUTPUT
+    if phase == "decision":
+        return FailureKind.MODEL_TRANSPORT
+    if phase == "execution":
+        return FailureKind.FLE_EXECUTION
+    if phase == "feedback":
+        return FailureKind.ADAPT_TRANSPORT
+    return FailureKind.TASK

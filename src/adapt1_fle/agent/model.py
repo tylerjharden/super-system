@@ -68,6 +68,7 @@ class FLEPolicyGenerator:
             code=policy.code,
             raw_content=_response_content(response),
             model=self.model,
+            input_messages=[dict(message) for message in messages],
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
@@ -83,11 +84,11 @@ class StaticPolicyGenerator:
         self.code = code
 
     async def generate(self, messages: Sequence[dict[str, str]]) -> GeneratedPolicy:
-        del messages
         return GeneratedPolicy(
             code=self.code,
             raw_content=f"```python\n{self.code}\n```",
             model="static-smoke-policy",
+            input_messages=[dict(message) for message in messages],
         )
 
 

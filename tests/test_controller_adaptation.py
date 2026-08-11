@@ -125,7 +125,7 @@ async def test_training_binds_query_to_feedback_and_memory(tmp_path: Path) -> No
     assert feedback_body["values"]["step_reward"] == 1.0
     assert feedback_body["values"]["terminal"] is True
     assert memory_store.called
-    event = next(iter(ledger.read_events()))
+    event = next(event for event in ledger.read_events() if event["kind"] == "interaction")
     assert event["selection"]["source"] == "adapt_1"
     assert event["feedback_exchange"]["status_code"] == 200
     assert event["memory_write_exchange"]["status_code"] == 200

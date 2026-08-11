@@ -72,6 +72,13 @@ class AdaptiveController:
         state: CompactState,
         detailed_observation: str,
     ) -> PendingDecision:
+        self.ledger.append(
+            {
+                "kind": "decision_started",
+                "ids": ids.model_dump(mode="json"),
+                "before_state": state.model_dump(mode="json"),
+            }
+        )
         if self.mode is RunMode.BASELINE:
             selection = StrategySelection(
                 policy=fallback_policy(state),
@@ -106,8 +113,24 @@ class AdaptiveController:
             selection=selection,
             memory=memory,
         )
+        self.ledger.append(
+            {
+                "kind": "decision_prepared",
+                "ids": ids.model_dump(mode="json"),
+                "selection": selection.model_dump(mode="json"),
+                "memory": memory.model_dump(mode="json"),
+                "user_prompt": user_prompt,
+            }
+        )
         messages = self.conversation.messages_with(user_prompt)
         generated = await self.generator.generate(messages)
+        self.ledger.append(
+            {
+                "kind": "action_prepared",
+                "ids": ids.model_dump(mode="json"),
+                "generated_policy": generated.model_dump(mode="json"),
+            }
+        )
         self.conversation.commit(user_prompt, generated.raw_content)
         return PendingDecision(
             ids=ids,

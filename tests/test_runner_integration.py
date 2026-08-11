@@ -113,10 +113,15 @@ async def test_baseline_runner_executes_and_records_complete_transition(
     assert len(environment.actions) == 1
     assert environment.actions[0].code == "print(inspect_inventory())"
     assert environment.closed is False
-    assert len(events) == 2
-    assert events[0]["kind"] == "interaction"
-    assert events[0]["reward"]["normalized_reward"] == 1.0
-    assert events[1]["kind"] == "completion"
+    assert [event["kind"] for event in events] == [
+        "decision_started",
+        "decision_prepared",
+        "action_prepared",
+        "interaction",
+        "completion",
+    ]
+    assert events[2]["generated_policy"]["input_messages"][0]["role"] == "system"
+    assert events[3]["reward"]["normalized_reward"] == 1.0
     assert metrics.success is True
     assert metrics.final_score == 16
     assert metrics.steps == 1

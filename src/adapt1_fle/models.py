@@ -107,6 +107,7 @@ class GeneratedPolicy(StrictModel):
     code: str
     raw_content: str
     model: str
+    input_messages: list[dict[str, str]] = Field(default_factory=list)
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
     total_tokens: int = Field(default=0, ge=0)
