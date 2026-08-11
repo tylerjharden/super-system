@@ -85,7 +85,6 @@ class AdaptiveController:
                 await self.domain.select(
                     state,
                     frozen=self.mode is RunMode.FROZEN,
-                    run_id=self.run_id,
                 )
                 if self.domain is not None
                 else StrategySelection(

@@ -133,7 +133,6 @@ class FactorioDomain:
         state: CompactState,
         *,
         frozen: bool,
-        run_id: str,
     ) -> StrategySelection:
         question = build_strategy_question(state)
         response, exchange = await self.client.query_domain(
@@ -148,7 +147,7 @@ class FactorioDomain:
                 "missing_evidence",
                 "learning_state",
             ],
-            metadata_filter={"task_key": state.task_key, "run_id": run_id},
+            metadata_filter=None,
             frozen=frozen,
         )
         return normalize_strategy_response(response, state=state, exchange=exchange)
@@ -191,6 +190,7 @@ class FactorioDomain:
                 "episode_id": ids.episode_id,
                 "interaction_id": ids.interaction_id,
                 "step": ids.step,
+                "task_key": next_state.task_key,
                 "relation": selection.relation,
                 "policy": selection.policy,
             },
