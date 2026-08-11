@@ -49,10 +49,10 @@ def observation(*, success: bool, score: float) -> dict[str, Any]:
         "inventory": [{"type": "iron-ore", "quantity": int(score)}],
         "research": {
             "technologies": [],
-            "current_research": None,
+            "current_research": "None",
             "research_progress": 0,
             "research_queue": [],
-            "progress": [],
+            "progress": "None",
         },
         "game_info": {"tick": int(score * 225), "time": score * 3.75, "speed": 1},
         "score": score,
