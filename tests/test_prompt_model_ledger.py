@@ -62,6 +62,25 @@ def test_ledger_rejects_sequence_corruption(tmp_path: Path) -> None:
         RunLedger.open(run_dir)
 
 
+def test_failed_append_does_not_advance_sequence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = RunLedger.create(tmp_path, "run", {"run_id": "run"})
+    original_open = Path.open
+
+    def fail_event_open(path: Path, *args: object, **kwargs: object) -> object:
+        if path == ledger.events_path:
+            raise OSError("disk full")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_event_open)
+    with pytest.raises(OSError, match="disk full"):
+        ledger.append({"kind": "test"})
+
+    assert ledger.sequence == 0
+
+
 def test_existing_manifest_must_match(tmp_path: Path) -> None:
     RunLedger.create(tmp_path, "run", {"run_id": "run", "mode": "baseline"})
 

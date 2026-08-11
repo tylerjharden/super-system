@@ -74,14 +74,15 @@ class RunLedger:
 
     def append(self, event: BaseModel | Mapping[str, Any]) -> int:
         payload = event.model_dump(mode="json") if isinstance(event, BaseModel) else dict(event)
-        self._sequence += 1
-        envelope = {"sequence": self._sequence, "event": redact(payload)}
+        next_sequence = self._sequence + 1
+        envelope = {"sequence": next_sequence, "event": redact(payload)}
         encoded = json.dumps(envelope, sort_keys=True, separators=(",", ":"))
         with self.events_path.open("a", encoding="utf-8") as stream:
             stream.write(encoded + "\n")
             stream.flush()
             os.fsync(stream.fileno())
-        return self._sequence
+        self._sequence = next_sequence
+        return next_sequence
 
     def checkpoint(self, data: Mapping[str, Any]) -> None:
         payload = {"last_sequence": self._sequence, **redact(dict(data))}
