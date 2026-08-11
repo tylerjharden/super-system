@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "adapt1-fle"
+version = "0.1.0"
+description = "REI Adapt-1 research preview for the Factorio Learning Environment"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "REI Adapt-1 x FLE contributors" }]
+dependencies = [
+  "factorio-learning-environment[eval]>=0.4.3,<0.5",
+  "a2a-sdk<1.0.0",
+  "httpx>=0.27,<1",
+  "pydantic>=2,<3",
+  "python-dotenv>=1,<2",
+  "PyYAML>=6,<7",
+  "tenacity>=9,<10",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.14,<2",
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.25,<1",
+  "respx>=0.22,<1",
+  "ruff>=0.9,<1",
+  "types-PyYAML>=6,<7",
+]
+
+[project.scripts]
+adapt1-fle = "adapt1_fle.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/adapt1_fle"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "live: requires live external services and credentials",
+  "factorio: requires a running local Factorio cluster",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/adapt1_fle"]
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["fle.*", "gym.*"]
+ignore_missing_imports = true
