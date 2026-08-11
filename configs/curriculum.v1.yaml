@@ -1,0 +1,53 @@
+revision: "1"
+description: >-
+  Ordered exposure from basic extraction through advanced science, followed by
+  frozen transfer evaluation and open-play evaluation.
+stages:
+  - name: extraction
+    episodes_per_task: 2
+    tasks:
+      - iron_ore_throughput
+      - crude_oil_throughput
+  - name: processing
+    episodes_per_task: 2
+    tasks:
+      - iron_plate_throughput
+      - steel_plate_throughput
+      - plastic_bar_throughput
+      - sulfur_throughput
+      - petroleum_gas_throughput
+  - name: mechanics
+    episodes_per_task: 2
+    tasks:
+      - iron_gear_wheel_throughput
+      - inserter_throughput
+      - stone_wall_throughput
+      - piercing_round_throughput
+      - engine_unit_throughput
+  - name: circuits
+    episodes_per_task: 2
+    tasks:
+      - electronic_circuit_throughput
+      - advanced_circuit_throughput
+      - low_density_structure_throughput
+  - name: science
+    episodes_per_task: 2
+    tasks:
+      - automation_science_pack_throughput
+      - logistics_science_pack_throughput
+      - military_science_pack_throughput
+      - chemical_science_pack_throughput
+      - production_science_pack_throughput
+held_out_tasks:
+  - battery_throughput
+  - processing_unit_throughput
+  - sufuric_acid_throughput
+  - utility_science_pack_throughput
+transfer_tasks:
+  - open_play
+benchmark_arms:
+  - baseline
+  - cold_online
+  - warm_frozen
+  - domain_only
+  - memory_only
