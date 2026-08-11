@@ -63,7 +63,15 @@ sudo docker pull "$FACTORIO_IMAGE"
 echo "==> [7/8] Python toolchain + FLE"
 cd "$REPO_DIR"
 uv python install 3.12
-[ -d .venv ] || uv venv --python 3.12 .venv
+# Rebuild the venv if it is missing or incomplete. A fresh git checkout (each
+# build/boot) can leave an empty .venv directory behind, so guard on the actual
+# activate script rather than the directory.
+if [ ! -f .venv/bin/activate ]; then
+  # 'fle cluster start' mounts package dirs into the (root) container, which can
+  # leave root-owned files in a stale .venv; fall back to sudo when needed.
+  rm -rf .venv 2>/dev/null || sudo rm -rf .venv
+  uv venv --python 3.12 .venv
+fi
 # shellcheck disable=SC1091
 . .venv/bin/activate
 uv pip install -U pip
