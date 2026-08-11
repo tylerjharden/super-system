@@ -231,11 +231,14 @@ def normalize_strategy_response(
     _validate_strategy_response(response, scores=scores, direct_policy=direct_policy)
 
     source = SelectionSource.FALLBACK
-    abstained = bool(response.get("abstained", False))
+    abstained = response.get("abstained", False)
     selected_score: float | None = None
     reason: str
 
-    if direct_policy in STRATEGIES:
+    if abstained:
+        policy = fallback_policy(state)
+        reason = "Adapt-1 explicitly abstained"
+    elif direct_policy in STRATEGIES:
         policy = direct_policy
         selected_score = scores.get(policy)
         source = SelectionSource.ADAPT_1
@@ -301,6 +304,10 @@ def _validate_strategy_response(
 ) -> None:
     if direct_policy is not None and direct_policy not in STRATEGIES:
         raise DomainContractError(f"Adapt-1 returned unknown policy {direct_policy!r}")
+
+    abstained = response.get("abstained", False)
+    if not isinstance(abstained, bool):
+        raise DomainContractError("abstained must be a boolean when returned")
 
     raw_scores = response.get("policy_scores")
     if raw_scores is not None and not isinstance(raw_scores, dict | list):

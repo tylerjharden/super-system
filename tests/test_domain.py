@@ -95,6 +95,47 @@ def test_unknown_returned_policy_is_a_contract_error() -> None:
             {"selected_policy": "launch_rocket_immediately"},
             state=state(),
         )
+    with pytest.raises(DomainContractError, match="abstained must be a boolean"):
+        normalize_strategy_response(
+            {"abstained": "yes"},
+            state=state(),
+        )
+
+
+def test_explicit_abstention_forces_fallback_and_unseals_feedback() -> None:
+    selection = normalize_strategy_response(
+        {
+            "abstained": True,
+            "selected_policy": "assemble",
+            "decision_id": "sealed-but-not-executed",
+        },
+        state=state(phase="logistics"),
+    )
+
+    assert selection.policy == "logistics"
+    assert selection.source is SelectionSource.FALLBACK
+    assert selection.abstained is True
+
+    definition = load_domain_definition("configs/domain.factorio.v1.yaml")
+    domain = FactorioDomain(AdaptClient(base_url=BASE_URL, api_key="secret"), definition)
+    payload = domain.build_feedback(
+        ids=InteractionIds(
+            run_id="run",
+            episode_id="episode",
+            interaction_id="interaction",
+            event_id="event",
+            trial_id="trial",
+            step=1,
+        ),
+        selection=selection,
+        next_state=state(),
+        reward=0,
+        terminal_success=False,
+        episode_end=False,
+        execution_error=False,
+    )
+    assert "decision_id" not in payload
+    assert payload["metadata"]["selected_by"] == "fallback"
 
 
 def test_feedback_binds_sealed_decision_and_sequential_fields() -> None:
