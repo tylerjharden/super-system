@@ -12,7 +12,6 @@ import httpx
 
 from adapt1_fle.models import ApiExchange, JsonObject
 
-TRANSIENT_STATUS_CODES = {429, 502, 503, 504}
 PERMANENT_STATUS_CODES = {400, 401, 403, 404, 409, 413, 422}
 
 
@@ -225,6 +224,8 @@ class AdaptClient:
         request_id = str(uuid.uuid4())
         attempts = self.read_retry_attempts if safe_to_retry else 1
         last_exchange: ApiExchange | None = None
+        request_started = time.monotonic()
+        attempt_records: list[JsonObject] = []
 
         for attempt in range(attempts):
             started = time.monotonic()
@@ -236,7 +237,9 @@ class AdaptClient:
                         method=method,
                         route=route,
                         payload=payload,
-                        started=started,
+                        started=request_started,
+                        attempt_count=attempt + 1,
+                        attempts=attempt_records,
                         error="Adapt-1 authentication is not configured",
                     )
                     raise PermanentAdaptError(exchange.error or "missing API key", exchange)
@@ -250,12 +253,21 @@ class AdaptClient:
                     headers=headers,
                 )
             except httpx.RequestError as error:
+                attempt_records.append(
+                    {
+                        "attempt": attempt + 1,
+                        "elapsed_seconds": time.monotonic() - started,
+                        "error": f"{type(error).__name__}: {error}",
+                    }
+                )
                 exchange = self._exchange(
                     request_id=request_id,
                     method=method,
                     route=route,
                     payload=payload,
-                    started=started,
+                    started=request_started,
+                    attempt_count=attempt + 1,
+                    attempts=attempt_records,
                     ambiguous=not safe_to_retry,
                     error=f"{type(error).__name__}: {error}",
                 )
@@ -271,12 +283,22 @@ class AdaptClient:
                 raise TransientAdaptError("Adapt-1 read retries exhausted", exchange) from error
 
             body = _response_object(response)
+            attempt_records.append(
+                {
+                    "attempt": attempt + 1,
+                    "elapsed_seconds": time.monotonic() - started,
+                    "status_code": response.status_code,
+                    "response": body,
+                }
+            )
             exchange = self._exchange(
                 request_id=request_id,
                 method=method,
                 route=route,
                 payload=payload,
-                started=started,
+                started=request_started,
+                attempt_count=attempt + 1,
+                attempts=attempt_records,
                 status_code=response.status_code,
                 response=body,
             )
@@ -286,7 +308,7 @@ class AdaptClient:
                 return body, exchange
 
             detail = _error_detail(body, response.text)
-            if response.status_code in TRANSIENT_STATUS_CODES:
+            if _is_transient_status(response.status_code):
                 if not safe_to_retry:
                     ambiguous = exchange.model_copy(update={"ambiguous": True, "error": detail})
                     raise AmbiguousWriteError(
@@ -322,6 +344,8 @@ class AdaptClient:
         route: str,
         payload: JsonObject | None,
         started: float,
+        attempt_count: int,
+        attempts: list[JsonObject],
         status_code: int | None = None,
         response: JsonObject | None = None,
         ambiguous: bool = False,
@@ -335,6 +359,8 @@ class AdaptClient:
             status_code=status_code,
             response=response,
             elapsed_seconds=time.monotonic() - started,
+            attempt_count=attempt_count,
+            attempts=attempts,
             ambiguous=ambiguous,
             error=error,
         )
@@ -370,3 +396,7 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
 def _backoff_seconds(attempt: int) -> float:
     delay = 0.5 * float(2**attempt)
     return min(delay, 8.0)
+
+
+def _is_transient_status(status_code: int) -> bool:
+    return status_code == 429 or 500 <= status_code <= 599

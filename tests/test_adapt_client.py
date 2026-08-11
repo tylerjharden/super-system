@@ -39,10 +39,12 @@ async def test_safe_read_retries_transient_status() -> None:
         api_key="secret",
         read_retry_attempts=2,
     ) as client:
-        body, _ = await client.list_domains()
+        body, exchange = await client.list_domains()
 
     assert body["domains"] == ["factorio"]
     assert route.call_count == 2
+    assert exchange.attempt_count == 2
+    assert [attempt["status_code"] for attempt in exchange.attempts] == [503, 200]
 
 
 @respx.mock
@@ -55,6 +57,24 @@ async def test_mutating_transient_response_is_ambiguous_and_not_retried() -> Non
             await client.submit_feedback("factorio", {"outcome": "progress"})
 
     assert route.call_count == 1
+    assert raised.value.exchange.ambiguous is True
+
+
+@respx.mock
+async def test_any_write_side_server_error_is_ambiguous() -> None:
+    route = respx.post(f"{BASE_URL}/api/v1/memory/store").mock(
+        return_value=httpx.Response(500, json={"detail": "internal failure"})
+    )
+    async with AdaptClient(base_url=BASE_URL, api_key="secret") as client:
+        with pytest.raises(AmbiguousWriteError) as raised:
+            await client.store_memory(
+                message="evidence",
+                response="stored",
+                context={},
+            )
+
+    assert route.call_count == 1
+    assert raised.value.exchange.status_code == 500
     assert raised.value.exchange.ambiguous is True
 
 

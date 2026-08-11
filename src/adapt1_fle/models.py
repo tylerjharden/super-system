@@ -69,6 +69,8 @@ class ApiExchange(StrictModel):
     status_code: int | None = None
     response: JsonObject | None = None
     elapsed_seconds: float = Field(ge=0)
+    attempt_count: int = Field(default=1, ge=1)
+    attempts: list[JsonObject] = Field(default_factory=list)
     ambiguous: bool = False
     error: str | None = None
 
