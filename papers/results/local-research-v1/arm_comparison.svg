@@ -54,6 +54,6 @@
   <text x="789" y="382" class="small" text-anchor="middle">domain</text>
   <text x="879" y="382" class="small" text-anchor="middle">memory</text>
 
-  <text x="42" y="430" class="small">All arms: 0/10 task successes (Wilson 95% CI 027.8%).</text>
-  <text x="42" y="450" class="small">Domain guidance reduced execution errors but also reduced production; all Domain selections were inspect.</text>
+  <text x="42" y="430" class="small">All arms: 0/10 task successes (Wilson 95% CI 0-27.8%).</text>
+  <text x="42" y="450" class="small">Domain guidance reduced execution errors but also reduced production; all Domain selections were &quot;inspect&quot;.</text>
 </svg>
