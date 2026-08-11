@@ -135,6 +135,7 @@ class TrajectoryRunner:
                     pending=pending,
                     execution=execution,
                     after_state=after,
+                    episode_end=bool(terminated or truncated or step + 1 == self.trajectory_length),
                 )
                 steps_completed = step + 1
                 observation = after_observation

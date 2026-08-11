@@ -116,6 +116,7 @@ async def test_training_binds_query_to_feedback_and_memory(tmp_path: Path) -> No
             pending=pending,
             execution=execution(),
             after_state=state(step=1, score=16),
+            episode_end=True,
         )
 
     feedback_body = json.loads(feedback.calls[0].request.content)
@@ -161,6 +162,7 @@ async def test_frozen_mode_performs_no_writes(tmp_path: Path) -> None:
             pending=pending,
             execution=execution(),
             after_state=state(step=1, score=16),
+            episode_end=True,
         )
 
     domain_body = json.loads(domain_query.calls[0].request.content)

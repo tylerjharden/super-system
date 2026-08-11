@@ -111,7 +111,8 @@ def test_feedback_binds_sealed_decision_and_sequential_fields() -> None:
         selection=selection,
         next_state=state(),
         reward=0.4,
-        terminal=False,
+        terminal_success=False,
+        episode_end=True,
         execution_error=False,
     )
 
@@ -119,7 +120,7 @@ def test_feedback_binds_sealed_decision_and_sequential_fields() -> None:
     assert payload["relation"] == "advances_goal"
     assert payload["policy"] == "assemble"
     assert payload["values"]["step_reward"] == 0.4
-    assert payload["values"]["terminal"] is False
+    assert payload["values"]["terminal"] is True
     assert payload["metadata"]["episode_id"] == "episode-1"
     assert payload["metadata"]["step"] == 3
 

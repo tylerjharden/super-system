@@ -159,10 +159,11 @@ class FactorioDomain:
         selection: StrategySelection,
         next_state: CompactState,
         reward: float,
-        terminal: bool,
+        terminal_success: bool,
+        episode_end: bool,
         execution_error: bool,
     ) -> JsonObject:
-        if terminal:
+        if terminal_success:
             outcome = "success"
         elif execution_error:
             outcome = "execution_error"
@@ -181,7 +182,7 @@ class FactorioDomain:
                 "reward": reward,
                 "step_reward": reward,
                 "next_state": next_state.model_dump(mode="json"),
-                "terminal": terminal,
+                "terminal": episode_end,
             },
             "metadata": {
                 "run_id": ids.run_id,
@@ -193,9 +194,10 @@ class FactorioDomain:
                 "task_key": next_state.task_key,
                 "relation": selection.relation,
                 "policy": selection.policy,
+                "selected_by": selection.source.value,
             },
         }
-        if selection.decision_id is not None:
+        if selection.source is SelectionSource.ADAPT_1 and selection.decision_id is not None:
             payload["decision_id"] = selection.decision_id
         return payload
 

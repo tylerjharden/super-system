@@ -124,6 +124,7 @@ class AdaptiveController:
         pending: PendingDecision,
         execution: ExecutionResult,
         after_state: CompactState,
+        episode_end: bool,
     ) -> InteractionRecord:
         reward = calculate_reward(
             before=pending.before_state,
@@ -144,7 +145,8 @@ class AdaptiveController:
                         selection=pending.selection,
                         next_state=after_state,
                         reward=reward.normalized_reward,
-                        terminal=execution.terminated or execution.truncated,
+                        terminal_success=execution.terminated,
+                        episode_end=episode_end,
                         execution_error=execution.error_occurred,
                     )
                     _, feedback_exchange = await self.domain.client.submit_feedback(
