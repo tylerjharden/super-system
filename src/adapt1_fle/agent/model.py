@@ -212,10 +212,7 @@ def _extract_python_code(response: Any, raw_content: str) -> str | None:
 
 def _integer_attribute(value: Any, *names: str) -> int:
     for name in names:
-        if isinstance(value, dict):
-            attribute = value.get(name)
-        else:
-            attribute = getattr(value, name, None)
+        attribute = value.get(name) if isinstance(value, dict) else getattr(value, name, None)
         if isinstance(attribute, int) and not isinstance(attribute, bool):
             return max(attribute, 0)
     return 0
