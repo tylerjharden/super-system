@@ -104,9 +104,7 @@ class AdaptiveController:
                     reason="memory-only arm uses the deterministic strategy controller",
                 )
             )
-            if self.mode is RunMode.TRAIN and state.step < len(
-                self.forced_strategy_schedule
-            ):
+            if self.mode is RunMode.TRAIN and state.step < len(self.forced_strategy_schedule):
                 forced_policy = self.forced_strategy_schedule[state.step]
                 selection = StrategySelection(
                     policy=forced_policy,

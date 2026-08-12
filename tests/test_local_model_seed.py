@@ -17,13 +17,7 @@ async def test_ollama_generation_records_seed_in_request(
         return_value=httpx.Response(
             200,
             json={
-                "choices": [
-                    {
-                        "message": {
-                            "content": "```python\nprint(inspect_inventory())\n```"
-                        }
-                    }
-                ],
+                "choices": [{"message": {"content": "```python\nprint(inspect_inventory())\n```"}}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 5,

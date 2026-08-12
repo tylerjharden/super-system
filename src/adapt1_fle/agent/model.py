@@ -119,9 +119,7 @@ class FLEPolicyGenerator:
 
         raise PolicyGenerationError(last_error)
 
-    async def _call_ollama(
-        self, messages: list[dict[str, str]]
-    ) -> tuple[str, dict[str, Any]]:
+    async def _call_ollama(self, messages: list[dict[str, str]]) -> tuple[str, dict[str, Any]]:
         base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/")
         payload: dict[str, Any] = {
             "model": self.model.removeprefix("ollama-"),

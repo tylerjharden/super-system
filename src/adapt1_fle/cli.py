@@ -545,9 +545,7 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
     ]
     if arguments.randomization_seed is not None:
         random.Random(arguments.randomization_seed).shuffle(cells)
-    cells = [
-        cell.model_copy(update={"order": order}) for order, cell in enumerate(cells)
-    ]
+    cells = [cell.model_copy(update={"order": order}) for order, cell in enumerate(cells)]
     write_experiment_plan(
         settings.ledger_root,
         ExperimentPlan(
