@@ -72,6 +72,7 @@ class FLEPolicyGenerator:
         last_error = "model response did not contain Python in a fenced code block"
 
         for attempt in range(self.parse_retries + 1):
+            usage: Any
             if self.model.startswith("ollama"):
                 response = None
                 raw_content, usage = await self._call_ollama(working)
