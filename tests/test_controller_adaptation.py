@@ -63,6 +63,7 @@ def make_controller(
     mode: RunMode,
     ledger: RunLedger,
     client: AdaptClient,
+    forced_strategy_schedule: tuple[str, ...] = (),
 ) -> AdaptiveController:
     definition = load_domain_definition("configs/domain.factorio.v1.yaml")
     domain = FactorioDomain(client, definition, domain_id="factorio-test")
@@ -76,6 +77,7 @@ def make_controller(
         ledger=ledger,
         domain=domain,
         memory=memory,
+        forced_strategy_schedule=forced_strategy_schedule,
     )
 
 
@@ -127,12 +129,46 @@ async def test_training_binds_query_to_feedback_and_memory(tmp_path: Path) -> No
     assert feedback_body["values"]["step_reward"] == 1.0
     assert feedback_body["values"]["terminal"] is True
     assert memory_query_body["metadata_filter"]["domain_id"] == "factorio-test"
+    assert memory_query_body["metadata_filter"]["memory_profile"] == "default"
     assert memory_store_body["context"]["domain_id"] == "factorio-test"
+    assert memory_store_body["context"]["memory_profile"] == "default"
     assert memory_store.called
     event = next(event for event in ledger.read_events() if event["kind"] == "interaction")
     assert event["selection"]["source"] == "adapt_1"
     assert event["feedback_exchange"]["status_code"] == 200
     assert event["memory_write_exchange"]["status_code"] == 200
+
+
+@respx.mock
+async def test_training_can_force_balanced_strategy_coverage(tmp_path: Path) -> None:
+    respx.post(f"{BASE_URL}/api/v1/domains/factorio-test/query").mock(
+        return_value=httpx.Response(
+            200,
+            json={"selected_policy": "inspect", "decision_id": "decision-1"},
+        )
+    )
+    respx.post(f"{BASE_URL}/api/v1/memory/query").mock(
+        return_value=httpx.Response(200, json={"memory_context": ""})
+    )
+    ledger = RunLedger.create(tmp_path, "run-1", {"run_id": "run-1"})
+
+    async with AdaptClient(base_url=BASE_URL, api_key="secret") as client:
+        controller = make_controller(
+            mode=RunMode.TRAIN,
+            ledger=ledger,
+            client=client,
+            forced_strategy_schedule=("mine",),
+        )
+        pending = await controller.decide(
+            ids=ids(),
+            state=state(step=0, score=0),
+            detailed_observation="empty factory",
+        )
+
+    assert pending.selection.policy == "mine"
+    assert pending.selection.source.value == "forced_exploration"
+    assert pending.selection.decision_id is None
+    assert pending.selection.exchange is not None
 
 
 @respx.mock

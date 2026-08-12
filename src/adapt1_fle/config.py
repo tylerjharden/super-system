@@ -35,6 +35,9 @@ ENVIRONMENT_FIELDS: dict[str, str] = {
     "ADAPT1_FLE_MEMORY_ENABLED": "memory_enabled",
     "ADAPT1_FLE_TOP_K": "adapt_top_k",
     "ADAPT1_FLE_TIMEOUT_SECONDS": "request_timeout_seconds",
+    "ADAPT1_FLE_MODEL_SEED": "model_seed",
+    "ADAPT1_FLE_MEMORY_PROFILE": "memory_profile",
+    "ADAPT1_FLE_MEMORY_SCOPE": "memory_scope",
 }
 
 API_KEY_ALIASES = (
@@ -50,6 +53,7 @@ INTEGER_FIELDS = {
     "max_messages",
     "max_workers",
     "adapt_top_k",
+    "model_seed",
 }
 FLOAT_FIELDS = {"request_timeout_seconds"}
 
@@ -74,6 +78,9 @@ class Settings(BaseModel):
     adapt_top_k: int = Field(default=12, ge=1, le=100)
     request_timeout_seconds: float = Field(default=120.0, gt=0, le=300)
     read_retry_attempts: int = Field(default=4, ge=1, le=10)
+    model_seed: int | None = Field(default=None, ge=0)
+    memory_profile: str = "default"
+    memory_scope: str = "task"
     run_id: str | None = None
 
     @field_validator("adapt_base_url")
@@ -88,6 +95,21 @@ class Settings(BaseModel):
         if not cleaned or any(character.isspace() for character in cleaned):
             raise ValueError("domain_id must be non-empty and contain no whitespace")
         return cleaned
+
+    @field_validator("memory_profile")
+    @classmethod
+    def validate_memory_profile(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or any(character.isspace() for character in cleaned):
+            raise ValueError("memory_profile must be non-empty and contain no whitespace")
+        return cleaned
+
+    @field_validator("memory_scope")
+    @classmethod
+    def validate_memory_scope(cls, value: str) -> str:
+        if value not in {"task", "domain"}:
+            raise ValueError("memory_scope must be 'task' or 'domain'")
+        return value
 
     @model_validator(mode="after")
     def validate_writer_count(self) -> Settings:

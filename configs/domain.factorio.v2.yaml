@@ -1,0 +1,110 @@
+revision: "4"
+domain_id: factorio-strategy-v4
+description: >-
+  Select high-level factory strategies from public FLE observations and revise
+  their support from exact execution outcomes across ordered Factorio episodes.
+schema:
+  entities:
+    - task
+    - factory_state
+    - inventory
+    - production_flow
+    - strategy
+    - execution
+    - outcome
+  relations:
+    - advances_goal
+    - changes_state
+    - supported_by
+  event_types:
+    - factorio_observation
+    - factorio_execution
+    - factorio_transition
+    - factorio_terminal
+  signals:
+    - phase
+    - task_key
+    - target_item
+    - progress
+    - production_score
+    - automated_production_score
+    - inventory
+    - entity_counts
+    - entity_status_counts
+    - execution_error
+hypotheses:
+  - name: inspect
+    relation: advances_goal
+    policy: inspect
+    predicts:
+      - A targeted observation reduces missing evidence for the next commitment.
+  - name: gather
+    relation: advances_goal
+    policy: gather
+    predicts:
+      - Acquiring bootstrap resources enables the next automation action.
+  - name: craft
+    relation: advances_goal
+    policy: craft
+    predicts:
+      - Minimal manual crafting enables automated infrastructure.
+  - name: power
+    relation: advances_goal
+    policy: power
+    predicts:
+      - Working electrical supply enables or restores powered production.
+  - name: mine
+    relation: advances_goal
+    policy: mine
+    predicts:
+      - Automated extraction increases usable raw-material flow.
+  - name: smelt
+    relation: advances_goal
+    policy: smelt
+    predicts:
+      - Automated processing increases usable plate or material flow.
+  - name: logistics
+    relation: advances_goal
+    policy: logistics
+    predicts:
+      - Material routing connects working production stages.
+  - name: assemble
+    relation: advances_goal
+    policy: assemble
+    predicts:
+      - Automated recipes increase production of intermediates or the target.
+  - name: research
+    relation: advances_goal
+    policy: research
+    predicts:
+      - Technology progress unlocks required production capability.
+  - name: debug
+    relation: advances_goal
+    policy: debug
+    predicts:
+      - Repairing the observed failure restores intended operation.
+  - name: optimize
+    relation: advances_goal
+    policy: optimize
+    predicts:
+      - Removing a measured bottleneck increases automated throughput.
+  - name: verify
+    relation: advances_goal
+    policy: verify
+    predicts:
+      - Observing the running factory confirms stable automated throughput.
+query_templates:
+  feedback_outcomes:
+    - progress
+    - no_progress
+    - execution_error
+    - success
+learning:
+  enabled: true
+  policy:
+    exploration_mode: ucb
+    exploration_strength: 1.0
+  credit_assignment:
+    neutral_reward: 0.0
+  sequential:
+    enabled: true

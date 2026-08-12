@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from adapt1_fle.adapt.client import AdaptClientError
@@ -53,6 +54,7 @@ class AdaptiveController:
         ledger: RunLedger,
         domain: FactorioDomain | None = None,
         memory: FactorioMemory | None = None,
+        forced_strategy_schedule: Sequence[str] = (),
     ) -> None:
         if mode is not RunMode.BASELINE and domain is None and memory is None:
             raise ValueError("Adapt-enabled controller requires a Domain or Memory gateway")
@@ -64,6 +66,7 @@ class AdaptiveController:
         self.ledger = ledger
         self.domain = domain
         self.memory = memory
+        self.forced_strategy_schedule = tuple(forced_strategy_schedule)
 
     async def decide(
         self,
@@ -101,6 +104,26 @@ class AdaptiveController:
                     reason="memory-only arm uses the deterministic strategy controller",
                 )
             )
+            if self.mode is RunMode.TRAIN and state.step < len(
+                self.forced_strategy_schedule
+            ):
+                forced_policy = self.forced_strategy_schedule[state.step]
+                selection = StrategySelection(
+                    policy=forced_policy,
+                    source=SelectionSource.FORCED_EXPLORATION,
+                    score=None,
+                    decision_id=None,
+                    abstained=False,
+                    reason=(
+                        "pre-registered balanced strategy coverage overrode "
+                        f"Adapt-1 selection {selection.policy!r}"
+                    ),
+                    raw_response={
+                        "forced_policy": forced_policy,
+                        "adapt_selection": selection.model_dump(mode="json"),
+                    },
+                    exchange=selection.exchange,
+                )
             memory = (
                 await self.memory.query(state, frozen=self.mode is RunMode.FROZEN)
                 if self.memory is not None

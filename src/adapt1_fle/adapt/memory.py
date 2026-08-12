@@ -12,21 +12,37 @@ from adapt1_fle.models import (
     ApiExchange,
     CompactState,
     ExecutionResult,
+    InteractionRecord,
     MemoryContext,
     RewardRecord,
     StrategySelection,
 )
 
+POSITIVE_ONLY = "positive_only"
+FAILURE_DIAGNOSTIC = "failure_diagnostic"
+MEMORY_PROFILES = (POSITIVE_ONLY, FAILURE_DIAGNOSTIC)
+
 
 class FactorioMemory:
     """Query useful evidence and avoid flooding Memory with every transition."""
 
-    def __init__(self, client: AdaptClient, *, namespace: str, top_k: int = 8) -> None:
+    def __init__(
+        self,
+        client: AdaptClient,
+        *,
+        namespace: str,
+        profile: str = "default",
+        scope: str = "task",
+        top_k: int = 8,
+    ) -> None:
         self.client = client
         self.namespace = namespace
+        self.profile = profile
+        self.scope = scope
         self.top_k = top_k
         self._stored_fingerprints: set[str] = set()
         self._error_counts: Counter[str] = Counter()
+        self._positive_tasks: set[str] = set()
 
     async def query(self, state: CompactState, *, frozen: bool) -> MemoryContext:
         message = (
@@ -34,14 +50,17 @@ class FactorioMemory:
             f"task={state.task_key}, target={state.target_item}, phase={state.phase}, "
             f"error={state.last_error_category or 'none'}."
         )
+        metadata_filter = {
+            "application": "adapt1-fle",
+            "domain_id": self.namespace,
+            "memory_profile": self.profile,
+        }
+        if self.scope == "task":
+            metadata_filter["task_key"] = state.task_key
         response, exchange = await self.client.query_memory(
             message=message,
             top_k=self.top_k,
-            metadata_filter={
-                "application": "adapt1-fle",
-                "domain_id": self.namespace,
-                "task_key": state.task_key,
-            },
+            metadata_filter=metadata_filter,
             frozen=frozen,
         )
         return normalize_memory_response(response, exchange)
@@ -60,6 +79,27 @@ class FactorioMemory:
         if reason is None:
             return None
 
+        return await self.store_evidence(
+            before=before,
+            after=after,
+            selection=selection,
+            execution=execution,
+            reward=reward,
+            reason=reason,
+            run_id=run_id,
+        )
+
+    async def store_evidence(
+        self,
+        *,
+        before: CompactState,
+        after: CompactState,
+        selection: StrategySelection,
+        execution: ExecutionResult,
+        reward: RewardRecord,
+        reason: str,
+        run_id: str,
+    ) -> ApiExchange | None:
         lesson = _lesson_text(
             before=before,
             after=after,
@@ -68,7 +108,7 @@ class FactorioMemory:
             reward=reward,
             reason=reason,
         )
-        fingerprint = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
+        fingerprint = hashlib.sha256(f"{self.profile}:{lesson}".encode()).hexdigest()
         if fingerprint in self._stored_fingerprints:
             return None
 
@@ -78,6 +118,7 @@ class FactorioMemory:
             context={
                 "application": "adapt1-fle",
                 "domain_id": self.namespace,
+                "memory_profile": self.profile,
                 "run_id": run_id,
                 "task_key": before.task_key,
                 "phase": before.phase,
@@ -96,15 +137,55 @@ class FactorioMemory:
         reward: RewardRecord,
     ) -> str | None:
         if reward.terminal_success:
+            self._positive_tasks.add(after.task_key)
             return "task_success"
         if reward.normalized_reward >= 0.2:
+            self._positive_tasks.add(after.task_key)
             return "meaningful_progress"
-        if execution.error_occurred:
+        if self.profile == POSITIVE_ONLY:
+            return None
+        if execution.error_occurred and (
+            self.profile == "default" or after.task_key in self._positive_tasks
+        ):
             category = after.last_error_category or "unknown"
             self._error_counts[category] += 1
             if self._error_counts[category] >= 2:
                 return "recurring_failure"
         return None
+
+
+def profile_evidence_candidates(
+    records: list[InteractionRecord],
+    *,
+    profile: str,
+) -> list[tuple[InteractionRecord, str]]:
+    """Select ordered evidence without admitting failures before positive evidence."""
+
+    if profile not in MEMORY_PROFILES:
+        raise ValueError(f"unsupported Memory profile: {profile}")
+    positive_tasks: set[str] = set()
+    error_counts: Counter[tuple[str, str]] = Counter()
+    selected: list[tuple[InteractionRecord, str]] = []
+    for record in records:
+        if record.reward.terminal_success:
+            positive_tasks.add(record.after_state.task_key)
+            selected.append((record, "task_success"))
+            continue
+        if record.reward.normalized_reward >= 0.2:
+            positive_tasks.add(record.after_state.task_key)
+            selected.append((record, "meaningful_progress"))
+            continue
+        if profile != FAILURE_DIAGNOSTIC or not record.execution.error_occurred:
+            continue
+        task = record.after_state.task_key
+        if task not in positive_tasks:
+            continue
+        category = record.after_state.last_error_category or "unknown"
+        key = (task, category)
+        error_counts[key] += 1
+        if error_counts[key] >= 2:
+            selected.append((record, "recurring_failure_after_positive"))
+    return selected
 
 
 def normalize_memory_response(

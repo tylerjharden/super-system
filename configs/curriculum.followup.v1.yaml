@@ -1,0 +1,21 @@
+revision: "followup-1"
+description: >-
+  Balanced strategy-coverage exposure on extraction and processing before
+  seeded retention and held-out transfer evaluation.
+stages:
+  - name: extraction
+    episodes_per_task: 4
+    tasks:
+      - iron_ore_throughput
+  - name: processing
+    episodes_per_task: 4
+    tasks:
+      - iron_plate_throughput
+held_out_tasks:
+  - iron_gear_wheel_throughput
+transfer_tasks: []
+benchmark_arms:
+  - baseline
+  - domain_only
+  - warm_positive
+  - warm_diagnostic

@@ -47,6 +47,10 @@ def test_loads_versioned_domain_contract() -> None:
     assert definition.learning["credit_assignment"]["neutral_reward"] == 0.0
     assert len(definition.contract_hash) == 64
 
+    followup = load_domain_definition(Path("configs/domain.factorio.v2.yaml"))
+    assert followup.revision == "4"
+    assert followup.learning["policy"]["exploration_mode"] == "ucb"
+
 
 def test_unique_policy_score_is_selected() -> None:
     selection = normalize_strategy_response(

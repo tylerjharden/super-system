@@ -19,6 +19,8 @@ class BenchmarkArm(StrEnum):
     BASELINE = "baseline"
     COLD_ONLINE = "cold_online"
     WARM_FROZEN = "warm_frozen"
+    WARM_POSITIVE = "warm_positive"
+    WARM_DIAGNOSTIC = "warm_diagnostic"
     DOMAIN_ONLY = "domain_only"
     MEMORY_ONLY = "memory_only"
 

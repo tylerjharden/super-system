@@ -1,4 +1,10 @@
-from adapt1_fle.cli import _arm_settings, build_parser, comparison_fingerprint
+from adapt1_fle.adapt.domain import STRATEGIES
+from adapt1_fle.cli import (
+    _arm_settings,
+    balanced_strategy_schedule,
+    build_parser,
+    comparison_fingerprint,
+)
 from adapt1_fle.config import RunMode, Settings
 from adapt1_fle.curriculum import BenchmarkArm
 
@@ -71,3 +77,38 @@ def test_comparison_fingerprint_uses_actual_generator() -> None:
         domain_contract_hash="contract",
         generator_id=settings.model,
     )
+
+
+def test_balanced_strategy_schedule_is_seeded_and_complete() -> None:
+    first = balanced_strategy_schedule(seed=42, episode_ordinal=3, steps=12)
+    second = balanced_strategy_schedule(seed=42, episode_ordinal=3, steps=12)
+
+    assert first == second
+    assert set(first) == set(STRATEGIES)
+    assert len(first) == len(set(first)) == 12
+
+
+def test_memory_profile_arms_are_isolated() -> None:
+    settings = Settings(adapt_api_key="secret", memory_scope="domain")
+
+    positive, domain_enabled, memory_enabled = _arm_settings(
+        settings,
+        arm=BenchmarkArm.WARM_POSITIVE,
+        run_id="run-positive",
+        env_id="iron_ore_throughput",
+        steps=12,
+        model_seed=812000,
+    )
+    diagnostic, _, _ = _arm_settings(
+        settings,
+        arm=BenchmarkArm.WARM_DIAGNOSTIC,
+        run_id="run-diagnostic",
+        env_id="iron_ore_throughput",
+        steps=12,
+        model_seed=812000,
+    )
+
+    assert domain_enabled is memory_enabled is True
+    assert positive.memory_profile == "positive_only"
+    assert diagnostic.memory_profile == "failure_diagnostic"
+    assert positive.model_seed == diagnostic.model_seed == 812000

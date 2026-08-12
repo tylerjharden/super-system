@@ -250,6 +250,45 @@ This writes:
 - `benchmark.md`: pass rate with Wilson 95% interval, score, automation,
   execution-error, Adapt-selection, fallback, and abstention metrics.
 
+### Preregistered long-horizon follow-up
+
+The follow-up study addresses the first study's `inspect` lock-in and
+failure-only Memory:
+
+```bash
+adapt1-fle --config configs/followup-research.yaml train \
+  --curriculum configs/curriculum.followup.v1.yaml \
+  --steps 12 \
+  --strategy-coverage-seed 20260812
+
+adapt1-fle --config configs/followup-research.yaml memory materialize \
+  --profile positive_only \
+  --profile failure_diagnostic \
+  --max-per-profile 16
+
+adapt1-fle --config configs/followup-research.yaml evaluate \
+  --curriculum configs/curriculum.followup.v1.yaml \
+  --arm baseline \
+  --arm domain_only \
+  --arm warm_positive \
+  --arm warm_diagnostic \
+  --task iron_ore_throughput \
+  --task iron_gear_wheel_throughput \
+  --episodes 6 \
+  --steps 12 \
+  --randomization-seed 20260812 \
+  --model-seed-base 812000 \
+  --preregistration configs/experiment.followup.v1.yaml \
+  --continue-on-error
+```
+
+Each 12-step exposure episode receives a reproducibly shuffled permutation of
+all twelve declared strategies. Memory is materialized after exposure into
+isolated profiles: positive-only evidence, and positive evidence plus recurring
+failures observed only after a same-task positive exemplar. Evaluation order is
+randomized; each task/episode uses the same recorded model seed across arms.
+The preregistered ceiling is 129 records and 816 queries.
+
 ## Benchmark arms
 
 | Arm | Domain | Memory | Writes |

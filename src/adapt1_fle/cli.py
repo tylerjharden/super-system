@@ -10,6 +10,7 @@ import importlib.resources
 import inspect
 import json
 import os
+import random
 import socket
 import subprocess
 import sys
@@ -23,13 +24,18 @@ from dotenv import load_dotenv
 from fle.env.gym_env.registry import get_environment_info, list_available_environments
 from fle.env.utils.controller_loader.system_prompt_generator import SystemPromptGenerator
 
-from adapt1_fle.adapt.client import AdaptClient
+from adapt1_fle.adapt.client import AdaptClient, AdaptClientError
 from adapt1_fle.adapt.domain import (
+    STRATEGIES,
     FactorioDomain,
     load_domain_definition,
     normalize_strategy_response,
 )
-from adapt1_fle.adapt.memory import FactorioMemory
+from adapt1_fle.adapt.memory import (
+    MEMORY_PROFILES,
+    FactorioMemory,
+    profile_evidence_candidates,
+)
 from adapt1_fle.agent.controller import AdaptiveController
 from adapt1_fle.agent.model import (
     DEFAULT_MAX_TOKENS,
@@ -59,7 +65,7 @@ from adapt1_fle.evaluation import (
 from adapt1_fle.factorio.reward import EXECUTION_ERROR_PENALTY, calculate_reward
 from adapt1_fle.factorio.state import compact_state, infer_phase
 from adapt1_fle.ledger import RunLedger
-from adapt1_fle.models import RunCompletion
+from adapt1_fle.models import InteractionRecord, RunCompletion
 from adapt1_fle.report import write_report
 from adapt1_fle.runner import TrajectoryRunner
 
@@ -93,6 +99,23 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--limit", type=int, default=None)
     train.add_argument("--steps", type=int, default=None)
     train.add_argument("--static-policy", action="store_true")
+    train.add_argument(
+        "--strategy-coverage-seed",
+        type=int,
+        default=None,
+        help="force a balanced shuffled pass over every declared strategy",
+    )
+
+    memory = commands.add_parser("memory", help="materialize scoped Memory profiles")
+    memory_commands = memory.add_subparsers(dest="memory_command", required=True)
+    materialize = memory_commands.add_parser("materialize")
+    materialize.add_argument(
+        "--profile",
+        action="append",
+        choices=list(MEMORY_PROFILES),
+        required=True,
+    )
+    materialize.add_argument("--max-per-profile", type=int, default=16)
 
     evaluate = commands.add_parser("evaluate", help="run controlled benchmark arms")
     evaluate.add_argument("--curriculum", default="configs/curriculum.v1.yaml")
@@ -105,6 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--episodes", type=int, default=1)
     evaluate.add_argument("--steps", type=int, default=None)
     evaluate.add_argument("--static-policy", action="store_true")
+    evaluate.add_argument("--randomization-seed", type=int, default=None)
+    evaluate.add_argument("--model-seed-base", type=int, default=None)
+    evaluate.add_argument("--preregistration", default=None)
     evaluate.add_argument(
         "--continue-on-error",
         action="store_true",
@@ -152,6 +178,8 @@ async def dispatch(arguments: argparse.Namespace) -> int:
         return await run_command(arguments)
     if arguments.command == "train":
         return await train_command(arguments)
+    if arguments.command == "memory":
+        return await memory_command(arguments)
     if arguments.command == "evaluate":
         return await evaluate_command(arguments)
     if arguments.command == "report":
@@ -320,17 +348,29 @@ async def train_command(arguments: argparse.Namespace) -> int:
             settings,
             {"env_id": job.env_id, "run_id": run_id},
         )
+        forced_schedule = (
+            balanced_strategy_schedule(
+                seed=arguments.strategy_coverage_seed,
+                episode_ordinal=job.ordinal,
+                steps=job_settings.trajectory_length,
+            )
+            if arguments.strategy_coverage_seed is not None
+            else []
+        )
         completion, run_dir = await execute_run(
             job_settings,
             static_policy=arguments.static_policy,
             enable_domain=True,
             enable_memory=settings.memory_enabled,
             benchmark_arm="curriculum_train",
+            forced_strategy_schedule=forced_schedule,
             manifest_extra={
                 "curriculum_revision": curriculum.revision,
                 "curriculum_job_id": job.job_id,
                 "curriculum_stage": job.stage,
                 "curriculum_ordinal": job.ordinal,
+                "strategy_coverage_seed": arguments.strategy_coverage_seed,
+                "forced_strategy_schedule": forced_schedule,
             },
         )
         print(
@@ -338,6 +378,125 @@ async def train_command(arguments: argparse.Namespace) -> int:
         )
     if not jobs:
         print("Curriculum already complete.")
+    return 0
+
+
+async def memory_command(arguments: argparse.Namespace) -> int:
+    if arguments.memory_command != "materialize":
+        raise ValueError(f"unsupported memory command: {arguments.memory_command}")
+    settings = Settings.load(arguments.config)
+    settings.validate_for_execution()
+    if settings.adapt_api_key is None:
+        raise ValueError("Memory materialization requires an Adapt-1 credential")
+    if arguments.max_per_profile < 1:
+        raise ValueError("--max-per-profile must be positive")
+
+    runs: list[tuple[int, Path]] = []
+    for run_dir in settings.ledger_root.iterdir():
+        manifest_path = run_dir / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("benchmark_arm") != "curriculum_train":
+            continue
+        ordinal = manifest.get("curriculum_ordinal")
+        if isinstance(ordinal, int):
+            runs.append((ordinal, run_dir))
+    records: list[InteractionRecord] = []
+    for _, run_dir in sorted(runs):
+        ledger = RunLedger.open(run_dir)
+        records.extend(
+            InteractionRecord.model_validate(event)
+            for event in ledger.read_events()
+            if event.get("kind") == "interaction"
+        )
+
+    profiles = sorted(set(arguments.profile))
+    materialization_id = (
+        "_memory-materialization-"
+        + hashlib.sha256(
+            f"{settings.domain_id}:{','.join(profiles)}:{arguments.max_per_profile}".encode()
+        ).hexdigest()[:12]
+    )
+    receipt = RunLedger.create(
+        settings.ledger_root,
+        materialization_id,
+        {
+            "run_id": materialization_id,
+            "kind": "memory_materialization",
+            "domain_id": settings.domain_id,
+            "profiles": profiles,
+            "max_per_profile": arguments.max_per_profile,
+        },
+    )
+    existing = {
+        str(event.get("evidence_key"))
+        for event in receipt.read_events()
+        if event.get("kind") == "memory_materialized"
+    }
+    stored_counts: dict[str, int] = {}
+    async with _client(settings) as client:
+        for profile in profiles:
+            memory = FactorioMemory(
+                client,
+                namespace=settings.domain_id,
+                profile=profile,
+                scope=settings.memory_scope,
+                top_k=min(settings.adapt_top_k, 12),
+            )
+            candidates = profile_evidence_candidates(records, profile=profile)[
+                : arguments.max_per_profile
+            ]
+            stored = 0
+            for record, reason in candidates:
+                evidence_key = f"{profile}:{record.ids.interaction_id}:{reason}"
+                if evidence_key in existing:
+                    continue
+                try:
+                    exchange = await memory.store_evidence(
+                        before=record.before_state,
+                        after=record.after_state,
+                        selection=record.selection,
+                        execution=record.execution,
+                        reward=record.reward,
+                        reason=reason,
+                        run_id=record.ids.run_id,
+                    )
+                except AdaptClientError as error:
+                    receipt.append(
+                        {
+                            "kind": "memory_materialization_ambiguous",
+                            "evidence_key": evidence_key,
+                            "profile": profile,
+                            "exchange": error.exchange.model_dump(mode="json"),
+                        }
+                    )
+                    raise
+                if exchange is None:
+                    continue
+                receipt.append(
+                    {
+                        "kind": "memory_materialized",
+                        "evidence_key": evidence_key,
+                        "profile": profile,
+                        "reason": reason,
+                        "interaction_id": record.ids.interaction_id,
+                        "memory_exchange": exchange.model_dump(mode="json"),
+                    }
+                )
+                existing.add(evidence_key)
+                stored += 1
+            stored_counts[profile] = stored
+    print(
+        json.dumps(
+            {
+                "source_interactions": len(records),
+                "stored": stored_counts,
+                "receipt": str(receipt.run_dir),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -364,58 +523,83 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
         domain_contract_hash=definition.contract_hash,
         generator_id=generator_id,
     )
+    preregistration_hash = (
+        hashlib.sha256(Path(arguments.preregistration).read_bytes()).hexdigest()
+        if arguments.preregistration
+        else None
+    )
+    cells = [
+        ExperimentCell(
+            arm=arm,
+            env_id=env_id,
+            episode=episode,
+            model_seed=(
+                arguments.model_seed_base + task_index * arguments.episodes + episode
+                if arguments.model_seed_base is not None
+                else None
+            ),
+        )
+        for arm in arms
+        for task_index, env_id in enumerate(tasks)
+        for episode in range(arguments.episodes)
+    ]
+    if arguments.randomization_seed is not None:
+        random.Random(arguments.randomization_seed).shuffle(cells)
+    cells = [
+        cell.model_copy(update={"order": order}) for order, cell in enumerate(cells)
+    ]
     write_experiment_plan(
         settings.ledger_root,
         ExperimentPlan(
             experiment_id=experiment_id,
             comparison_fingerprint=protocol_fingerprint,
-            cells=[
-                ExperimentCell(arm=arm, env_id=env_id, episode=episode)
-                for arm in arms
-                for env_id in tasks
-                for episode in range(arguments.episodes)
-            ],
+            randomization_seed=arguments.randomization_seed,
+            model_seed_base=arguments.model_seed_base,
+            preregistration_hash=preregistration_hash,
+            cells=cells,
         ),
     )
     print(f"experiment_id={experiment_id}")
-    for arm_name in arms:
-        arm = BenchmarkArm(arm_name)
-        for env_id in tasks:
-            for episode in range(arguments.episodes):
-                run_id = _new_run_id(f"eval-{arm.value}-{env_id}")
-                arm_settings, domain_enabled, memory_enabled = _arm_settings(
-                    settings,
-                    arm=arm,
-                    run_id=run_id,
-                    env_id=env_id,
-                    steps=arguments.steps,
-                )
-                try:
-                    completion, run_dir = await execute_run(
-                        arm_settings,
-                        static_policy=arguments.static_policy,
-                        enable_domain=domain_enabled,
-                        enable_memory=memory_enabled,
-                        benchmark_arm=arm.value,
-                        manifest_extra={
-                            "held_out": env_id in curriculum.held_out_tasks,
-                            "evaluation_episode": episode,
-                            "curriculum_revision": curriculum.revision,
-                            "experiment_id": experiment_id,
-                        },
-                    )
-                    print(
-                        f"{arm.value}/{env_id}/{episode}: {completion.status} "
-                        f"score={completion.final_score:.3f} ledger={run_dir}"
-                    )
-                except Exception as error:
-                    print(
-                        f"{arm.value}/{env_id}/{episode}: operational_failure "
-                        f"{type(error).__name__}: {error}",
-                        file=sys.stderr,
-                    )
-                    if not arguments.continue_on_error:
-                        raise
+    for cell in cells:
+        arm = BenchmarkArm(cell.arm)
+        run_id = _new_run_id(f"eval-{arm.value}-{cell.env_id}")
+        arm_settings, domain_enabled, memory_enabled = _arm_settings(
+            settings,
+            arm=arm,
+            run_id=run_id,
+            env_id=cell.env_id,
+            steps=arguments.steps,
+            model_seed=cell.model_seed,
+        )
+        try:
+            completion, run_dir = await execute_run(
+                arm_settings,
+                static_policy=arguments.static_policy,
+                enable_domain=domain_enabled,
+                enable_memory=memory_enabled,
+                benchmark_arm=arm.value,
+                manifest_extra={
+                    "held_out": cell.env_id in curriculum.held_out_tasks,
+                    "evaluation_episode": cell.episode,
+                    "evaluation_order": cell.order,
+                    "curriculum_revision": curriculum.revision,
+                    "experiment_id": experiment_id,
+                    "randomization_seed": arguments.randomization_seed,
+                    "preregistration_hash": preregistration_hash,
+                },
+            )
+            print(
+                f"{cell.order}:{arm.value}/{cell.env_id}/{cell.episode}: "
+                f"{completion.status} score={completion.final_score:.3f} ledger={run_dir}"
+            )
+        except Exception as error:
+            print(
+                f"{cell.order}:{arm.value}/{cell.env_id}/{cell.episode}: "
+                f"operational_failure {type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
+            if not arguments.continue_on_error:
+                raise
     return 0
 
 
@@ -448,6 +632,7 @@ async def execute_run(
     enable_memory: bool,
     benchmark_arm: str | None,
     manifest_extra: dict[str, Any] | None = None,
+    forced_strategy_schedule: list[str] | None = None,
 ) -> tuple[RunCompletion, Path]:
     settings.validate_for_execution()
     run_id = settings.run_id or _new_run_id(settings.env_id)
@@ -470,6 +655,7 @@ async def execute_run(
         "env_id": settings.env_id,
         "model": "static-smoke-policy" if static_policy else settings.model,
         "model_provenance": model_details,
+        "model_seed": settings.model_seed,
         "trajectory_length": settings.trajectory_length,
         "domain_id": settings.domain_id if enable_domain else None,
         "domain_revision": definition.revision if enable_domain else None,
@@ -507,6 +693,8 @@ async def execute_run(
             FactorioMemory(
                 client,
                 namespace=settings.domain_id,
+                profile=settings.memory_profile,
+                scope=settings.memory_scope,
                 top_k=min(settings.adapt_top_k, 12),
             )
             if settings.adapt_enabled and enable_memory
@@ -527,7 +715,11 @@ async def execute_run(
             goal=str(environment_info["description"]),
             trajectory_length=settings.trajectory_length,
         )
-        generator = StaticPolicyGenerator() if static_policy else FLEPolicyGenerator(settings.model)
+        generator = (
+            StaticPolicyGenerator()
+            if static_policy
+            else FLEPolicyGenerator(settings.model, seed=settings.model_seed)
+        )
         controller = AdaptiveController(
             mode=settings.mode,
             run_id=run_id,
@@ -540,6 +732,7 @@ async def execute_run(
             ledger=ledger,
             domain=domain,
             memory=memory,
+            forced_strategy_schedule=forced_strategy_schedule or (),
         )
         runner = TrajectoryRunner(
             env_id=settings.env_id,
@@ -559,10 +752,12 @@ def _arm_settings(
     run_id: str,
     env_id: str,
     steps: int | None,
+    model_seed: int | None = None,
 ) -> tuple[Settings, bool, bool]:
     update: dict[str, Any] = {
         "run_id": run_id,
         "env_id": env_id,
+        "model_seed": model_seed,
     }
     if steps is not None:
         update["trajectory_length"] = steps
@@ -576,6 +771,14 @@ def _arm_settings(
         return _updated_settings(settings, update), True, False
     if arm is BenchmarkArm.WARM_FROZEN:
         update["mode"] = RunMode.FROZEN
+        return _updated_settings(settings, update), True, True
+    if arm is BenchmarkArm.WARM_POSITIVE:
+        update["mode"] = RunMode.FROZEN
+        update["memory_profile"] = "positive_only"
+        return _updated_settings(settings, update), True, True
+    if arm is BenchmarkArm.WARM_DIAGNOSTIC:
+        update["mode"] = RunMode.FROZEN
+        update["memory_profile"] = "failure_diagnostic"
         return _updated_settings(settings, update), True, True
     if arm is BenchmarkArm.DOMAIN_ONLY:
         update["mode"] = RunMode.FROZEN
@@ -609,6 +812,19 @@ def _new_run_id(prefix: str) -> str:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     safe_prefix = prefix.replace("_", "-")
     return f"{safe_prefix}-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+def balanced_strategy_schedule(*, seed: int, episode_ordinal: int, steps: int) -> list[str]:
+    """Build reproducible shuffled blocks that cover every strategy once."""
+
+    schedule: list[str] = []
+    block = 0
+    while len(schedule) < steps:
+        strategies = list(STRATEGIES)
+        random.Random(f"{seed}:{episode_ordinal}:{block}").shuffle(strategies)
+        schedule.extend(strategies)
+        block += 1
+    return schedule[:steps]
 
 
 def model_provenance(model: str) -> dict[str, Any]:
@@ -736,6 +952,7 @@ def comparison_fingerprint(
         "trajectory_length": settings.trajectory_length,
         "max_messages": settings.max_messages,
         "adapt_top_k": settings.adapt_top_k,
+        "memory_scope": settings.memory_scope,
         "fle_version": importlib.metadata.version("factorio-learning-environment"),
         "harness_version": importlib.metadata.version("adapt1-fle"),
         "harness_git_sha": _git_sha(),
@@ -748,6 +965,10 @@ def comparison_fingerprint(
             build_system_prompt,
             build_step_prompt,
             extra=POLICY_REQUIREMENTS + LOCAL_FLE_SYSTEM_PROMPT,
+        ),
+        "generation_contract_hash": _combined_source_hash(
+            FLEPolicyGenerator.generate,
+            FLEPolicyGenerator._call_ollama,
         ),
         "memory_contract_hash": _combined_source_hash(
             FactorioMemory.query,

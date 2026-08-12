@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
 import sys
 import time
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+import httpx
 from fle.agents.llm.api_factory import APIFactory
 from fle.agents.llm.parsing import parse_response
 
@@ -50,11 +52,15 @@ class FLEPolicyGenerator:
         temperature: float = DEFAULT_TEMPERATURE,
         api_key_config_file: str | None = None,
         parse_retries: int = 1,
+        seed: int | None = None,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.parse_retries = max(parse_retries, 0)
+        self.seed = seed
+        if seed is not None and not model.startswith("ollama"):
+            raise ValueError("model_seed is currently supported only for Ollama models")
         self._factory = APIFactory(model, api_key_config_file=api_key_config_file)
 
     async def generate(self, messages: Sequence[dict[str, str]]) -> GeneratedPolicy:
@@ -66,15 +72,19 @@ class FLEPolicyGenerator:
         last_error = "model response did not contain Python in a fenced code block"
 
         for attempt in range(self.parse_retries + 1):
-            response = await self._factory.acall(
-                messages=working,
-                n_samples=1,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                model=self.model,
-            )
-            raw_content = _response_content(response)
-            usage = getattr(response, "usage", None)
+            if self.model.startswith("ollama"):
+                response = None
+                raw_content, usage = await self._call_ollama(working)
+            else:
+                response = await self._factory.acall(
+                    messages=working,
+                    n_samples=1,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    model=self.model,
+                )
+                raw_content = _response_content(response)
+                usage = getattr(response, "usage", None)
             prompt_tokens += _integer_attribute(usage, "prompt_tokens", "input_tokens")
             completion_tokens += _integer_attribute(usage, "completion_tokens", "output_tokens")
 
@@ -108,6 +118,35 @@ class FLEPolicyGenerator:
             ]
 
         raise PolicyGenerationError(last_error)
+
+    async def _call_ollama(
+        self, messages: list[dict[str, str]]
+    ) -> tuple[str, dict[str, Any]]:
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/")
+        payload: dict[str, Any] = {
+            "model": self.model.removeprefix("ollama-"),
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": False,
+        }
+        if self.seed is not None:
+            payload["seed"] = self.seed
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": "Bearer ollama"},
+                json=payload,
+            )
+            response.raise_for_status()
+            body = response.json()
+        choices = body.get("choices", []) if isinstance(body, dict) else []
+        if not choices or not isinstance(choices[0], dict):
+            return "", {}
+        message = choices[0].get("message")
+        content = message.get("content") if isinstance(message, dict) else ""
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        return str(content or ""), usage
 
 
 class StaticPolicyGenerator:
@@ -173,7 +212,10 @@ def _extract_python_code(response: Any, raw_content: str) -> str | None:
 
 def _integer_attribute(value: Any, *names: str) -> int:
     for name in names:
-        attribute = getattr(value, name, None)
+        if isinstance(value, dict):
+            attribute = value.get(name)
+        else:
+            attribute = getattr(value, name, None)
         if isinstance(attribute, int) and not isinstance(attribute, bool):
             return max(attribute, 0)
     return 0

@@ -125,6 +125,13 @@ Every Memory query and write is also scoped by the versioned Domain ID. This
 prevents evidence from an older contract, pilot run, or another cold Domain
 from leaking into a warm-frozen comparison.
 
+Follow-up studies additionally scope by `memory_profile`. The
+`positive_only` profile admits success and normalized reward at least `0.2`.
+The `failure_diagnostic` profile contains those positives plus recurring
+failures only after a positive exemplar has already been observed for that
+training task. Domain-scope retrieval can then test transfer without mixing
+contracts or profile policies.
+
 ## State lifecycle
 
 - Training reuses one Domain across curriculum episodes with one writer.
