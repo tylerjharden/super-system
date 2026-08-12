@@ -40,8 +40,7 @@ def test_extract_python_code_uses_last_fenced_block() -> None:
 
 def test_extract_python_code_accepts_valid_bare_python() -> None:
     assert (
-        _extract_python_code(object(), "print(inspect_inventory())")
-        == "print(inspect_inventory())"
+        _extract_python_code(object(), "print(inspect_inventory())") == "print(inspect_inventory())"
     )
 
 
