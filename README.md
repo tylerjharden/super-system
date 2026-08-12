@@ -256,18 +256,18 @@ The follow-up study addresses the first study's `inspect` lock-in and
 failure-only Memory:
 
 ```bash
-adapt1-fle --config configs/followup-research.yaml train \
-  --curriculum configs/curriculum.followup.v1.yaml \
+adapt1-fle --config configs/followup-research-v2.yaml train \
+  --curriculum configs/curriculum.followup.v2.yaml \
   --steps 12 \
-  --strategy-coverage-seed 20260812
+  --strategy-coverage-seed 20260813
 
-adapt1-fle --config configs/followup-research.yaml memory materialize \
+adapt1-fle --config configs/followup-research-v2.yaml memory materialize \
   --profile positive_only \
   --profile failure_diagnostic \
   --max-per-profile 16
 
-adapt1-fle --config configs/followup-research.yaml evaluate \
-  --curriculum configs/curriculum.followup.v1.yaml \
+adapt1-fle --config configs/followup-research-v2.yaml evaluate \
+  --curriculum configs/curriculum.followup.v2.yaml \
   --arm baseline \
   --arm domain_only \
   --arm warm_positive \
@@ -276,9 +276,9 @@ adapt1-fle --config configs/followup-research.yaml evaluate \
   --task iron_gear_wheel_throughput \
   --episodes 6 \
   --steps 12 \
-  --randomization-seed 20260812 \
-  --model-seed-base 812000 \
-  --preregistration configs/experiment.followup.v1.yaml \
+  --randomization-seed 20260813 \
+  --model-seed-base 813000 \
+  --preregistration configs/experiment.followup.v2.yaml \
   --continue-on-error
 ```
 

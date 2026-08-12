@@ -38,6 +38,13 @@ def test_extract_python_code_uses_last_fenced_block() -> None:
     assert _extract_python_code(object(), raw) == "print(inspect_inventory())"
 
 
+def test_extract_python_code_accepts_valid_bare_python() -> None:
+    assert (
+        _extract_python_code(object(), "print(inspect_inventory())")
+        == "print(inspect_inventory())"
+    )
+
+
 def test_conversation_window_preserves_system_and_complete_recent_turns() -> None:
     conversation = ConversationWindow("system", max_messages=5)
     for index in range(5):

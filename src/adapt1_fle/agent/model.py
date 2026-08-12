@@ -51,7 +51,7 @@ class FLEPolicyGenerator:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         temperature: float = DEFAULT_TEMPERATURE,
         api_key_config_file: str | None = None,
-        parse_retries: int = 1,
+        parse_retries: int = 2,
         seed: int | None = None,
     ) -> None:
         self.model = model
@@ -206,6 +206,14 @@ def _extract_python_code(response: Any, raw_content: str) -> str | None:
     for candidate in reversed(matches):
         if candidate:
             return candidate
+    bare_candidate = raw_content.strip()
+    if bare_candidate:
+        try:
+            ast.parse(bare_candidate)
+        except SyntaxError:
+            pass
+        else:
+            return bare_candidate
     return None
 
 

@@ -111,7 +111,7 @@ adapt1-fle report --output reports/experiment-001
 
 ## Follow-up protocol
 
-`configs/experiment.followup.v1.yaml` preregisters the longer-horizon study
+`configs/experiment.followup.v2.yaml` preregisters the longer-horizon study
 before any new Domain write. Its changes are deliberate:
 
 - UCB is declared in the Domain contract, while exposure also forces balanced
@@ -120,7 +120,7 @@ before any new Domain write. Its changes are deliberate:
   metadata profiles, with failure admission gated on prior same-task positive
   evidence;
 - Memory queries use Domain scope to permit held-out transfer;
-- evaluation cells are shuffled with seed `20260812`;
+- evaluation cells are shuffled with seed `20260813`;
 - each task/episode shares a model seed across arms;
 - six episodes per task/arm exceed the first study's five;
 - primary and secondary tests are defined before execution.
@@ -128,6 +128,11 @@ before any new Domain write. Its changes are deliberate:
 The expected maximum is 129 records (including Domain creation) and 816
 queries. The exact preregistration hash is stored in the experiment plan and
 every run manifest.
+
+Followup-1 remains an immutable aborted pilot: two episodes and 24 feedback
+records completed before a third episode failed prior to its first interaction.
+It is excluded from followup-2, which uses a fresh Domain and ledger after a
+committed parser-hardening change.
 
 One `evaluate` invocation prints and stores an immutable experiment ID. Reports
 ignore curriculum/non-benchmark runs, require one experiment ID, and reject

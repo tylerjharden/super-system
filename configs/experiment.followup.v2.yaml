@@ -1,0 +1,78 @@
+revision: "followup-2"
+status: preregistered
+supersedes: configs/experiment.followup.v1.yaml
+supersession_reason: >-
+  Followup-1 was operationally aborted before its third episode produced any
+  interaction. Two complete episodes and 24 confirmed feedback records are
+  retained but excluded. Followup-2 uses a fresh Domain and ledger after
+  accepting syntactically valid bare Python and allowing two repair turns.
+research_question: >-
+  Does balanced strategy exposure with positive-gated Memory improve
+  long-horizon FLE outcomes relative to the identical seeded local model?
+model:
+  name: ollama-qwen2.5-coder:7b
+  expected_digest: dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364
+  temperature: 0.2
+  max_tokens: 1024
+  parse_retries: 2
+  accepts_valid_bare_python: true
+exposure:
+  tasks:
+    - iron_ore_throughput
+    - iron_plate_throughput
+  episodes_per_task: 4
+  steps: 12
+  strategy_coverage: balanced_shuffled_blocks
+  strategy_coverage_seed: 20260813
+  memory_during_exposure: false
+memory_materialization:
+  profiles:
+    positive_only:
+      admits:
+        - task_success
+        - normalized_reward_gte_0.2
+    failure_diagnostic:
+      admits:
+        - task_success
+        - normalized_reward_gte_0.2
+        - recurring_failure_after_same_task_positive
+  max_records_per_profile: 16
+  query_scope: domain
+evaluation:
+  arms:
+    - baseline
+    - domain_only
+    - warm_positive
+    - warm_diagnostic
+  tasks:
+    - iron_ore_throughput
+    - iron_gear_wheel_throughput
+  episodes_per_cell: 6
+  steps: 12
+  randomization_seed: 20260813
+  model_seed_base: 813000
+primary_endpoint:
+  metric: task_success
+  contrast: warm_positive_minus_baseline
+  population: both_evaluation_tasks
+  test: exact_paired_mcnemar
+secondary_endpoints:
+  metrics:
+    - final_production_score
+    - score_auc
+    - execution_error_count
+    - steps_to_success
+  contrasts:
+    - domain_only_minus_baseline
+    - warm_positive_minus_domain_only
+    - warm_diagnostic_minus_warm_positive
+  test: exact_paired_sign_flip_permutation
+  multiplicity: holm_within_metric
+interpretation_rules:
+  - No broad improvement claim if every arm has zero successes.
+  - Report exposed retention and held-out transfer separately.
+  - Treat Memory profiles as non-estimable when no records materialize.
+  - Report all missing cells, operational failures, and ambiguous writes.
+quota_ceiling:
+  records: 129
+  queries: 816
