@@ -2,8 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from adapt1_fle.adapt.domain import FactorioDomain
-from adapt1_fle.adapt.domain import STRATEGIES
+from adapt1_fle.adapt.domain import STRATEGIES, FactorioDomain
 from adapt1_fle.cli import (
     _arm_settings,
     balanced_strategy_schedule,
