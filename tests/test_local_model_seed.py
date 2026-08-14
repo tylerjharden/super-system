@@ -84,7 +84,7 @@ async def test_ollama_transport_retry_is_bounded(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(httpx.ReadTimeout, match="model stalled"):
         await generator.generate([{"role": "user", "content": "inspect"}])
 
-    assert len(route.calls) == 3
+    assert len(route.calls) == 4
 
 
 @pytest.mark.asyncio
