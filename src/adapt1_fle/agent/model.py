@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import sys
@@ -72,10 +73,50 @@ class FLEPolicyGenerator:
         last_error = "model response did not contain Python in a fenced code block"
 
         for attempt in range(self.parse_retries + 1):
+            # region agent log
+            open("/opt/cursor/logs/debug.log", "a").write(
+                json.dumps(
+                    {
+                        "hypothesisId": "C,D",
+                        "location": "agent/model.py:FLEPolicyGenerator.generate",
+                        "message": "generation attempt starting",
+                        "data": {
+                            "attempt": attempt,
+                            "model": self.model,
+                            "model_seed": self.seed,
+                            "message_count": len(working),
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+            # endregion
             usage: Any
             if self.model.startswith("ollama"):
                 response = None
-                raw_content, usage = await self._call_ollama(working)
+                try:
+                    raw_content, usage = await self._call_ollama(working)
+                except httpx.TransportError as error:
+                    # region agent log
+                    open("/opt/cursor/logs/debug.log", "a").write(
+                        json.dumps(
+                            {
+                                "hypothesisId": "D",
+                                "location": "agent/model.py:FLEPolicyGenerator.generate",
+                                "message": "ollama transport failed",
+                                "data": {
+                                    "attempt": attempt,
+                                    "model_seed": self.seed,
+                                    "error_type": type(error).__name__,
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+                    # endregion
+                    raise
             else:
                 response = await self._factory.acall(
                     messages=working,
@@ -88,6 +129,28 @@ class FLEPolicyGenerator:
                 usage = getattr(response, "usage", None)
             prompt_tokens += _integer_attribute(usage, "prompt_tokens", "input_tokens")
             completion_tokens += _integer_attribute(usage, "completion_tokens", "output_tokens")
+            # region agent log
+            open("/opt/cursor/logs/debug.log", "a").write(
+                json.dumps(
+                    {
+                        "hypothesisId": "C,D",
+                        "location": "agent/model.py:FLEPolicyGenerator.generate",
+                        "message": "generation response received",
+                        "data": {
+                            "attempt": attempt,
+                            "model_seed": self.seed,
+                            "content_chars": len(raw_content),
+                            "ends_with_fence": raw_content.rstrip().endswith("```"),
+                            "attempt_completion_tokens": _integer_attribute(
+                                usage, "completion_tokens", "output_tokens"
+                            ),
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+            # endregion
 
             code = _extract_python_code(response, raw_content)
             if code is None:
@@ -97,6 +160,25 @@ class FLEPolicyGenerator:
                     validate_python(code)
                 except PolicyGenerationError as error:
                     last_error = str(error)
+                    # region agent log
+                    open("/opt/cursor/logs/debug.log", "a").write(
+                        json.dumps(
+                            {
+                                "hypothesisId": "C",
+                                "location": "agent/model.py:FLEPolicyGenerator.generate",
+                                "message": "generated code validation failed",
+                                "data": {
+                                    "attempt": attempt,
+                                    "model_seed": self.seed,
+                                    "code_chars": len(code),
+                                    "error": last_error,
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+                    # endregion
                 else:
                     total_tokens = prompt_tokens + completion_tokens
                     return GeneratedPolicy(

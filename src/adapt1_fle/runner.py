@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any, Protocol, cast
@@ -61,9 +62,41 @@ class TrajectoryRunner:
         self.run_id = run_id
         self.episode_id = episode_id
         self._owns_environment = environment is None
+        # region agent log
+        open("/opt/cursor/logs/debug.log", "a").write(
+            json.dumps(
+                {
+                    "hypothesisId": "B",
+                    "location": "runner.py:TrajectoryRunner.__init__",
+                    "message": "environment initialization starting",
+                    "data": {
+                        "run_id": run_id,
+                        "env_id": env_id,
+                        "injected_environment": environment is not None,
+                    },
+                    "timestamp": int(time.time() * 1000),
+                }
+            )
+            + "\n"
+        )
+        # endregion
         self.environment = environment or cast(
             FactorioEnvironment, gym.make(env_id, run_idx=run_idx)
         )
+        # region agent log
+        open("/opt/cursor/logs/debug.log", "a").write(
+            json.dumps(
+                {
+                    "hypothesisId": "B",
+                    "location": "runner.py:TrajectoryRunner.__init__",
+                    "message": "environment initialization completed",
+                    "data": {"run_id": run_id, "env_id": env_id},
+                    "timestamp": int(time.time() * 1000),
+                }
+            )
+            + "\n"
+        )
+        # endregion
         self.formatter = TreeObservationFormatter(
             include_research=False,
             include_flows=False,
