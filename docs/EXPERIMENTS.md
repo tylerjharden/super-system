@@ -134,6 +134,12 @@ records completed before a third episode failed prior to its first interaction.
 It is excluded from followup-2, which uses a fresh Domain and ledger after a
 committed parser-hardening change.
 
+Followup-2 completed exposure and Memory materialization but its multi-day
+frozen evaluation was operationally incomplete. Followup-3 reuses that
+unchanged frozen state in a fresh experiment, preserves all scientific seeds
+and cells, retries transient Ollama transport three times with the same seed,
+writes terminal setup failures, and restarts Factorio before every cell.
+
 One `evaluate` invocation prints and stores an immutable experiment ID. Reports
 ignore curriculum/non-benchmark runs, require one experiment ID, and reject
 mixed comparison fingerprints. Use `--experiment-id` when a ledger root

@@ -9,6 +9,7 @@ from adapt1_fle.cli import (
     build_parser,
     comparison_fingerprint,
     execute_run,
+    restart_factorio_cluster,
 )
 from adapt1_fle.config import RunMode, Settings
 from adapt1_fle.curriculum import BenchmarkArm
@@ -118,6 +119,21 @@ def test_memory_profile_arms_are_isolated() -> None:
     assert positive.memory_profile == "positive_only"
     assert diagnostic.memory_profile == "failure_diagnostic"
     assert positive.model_seed == diagnostic.model_seed == 812000
+
+
+def test_factorio_restart_waits_for_rcon(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> object:
+        calls.append(command)
+        return type("Result", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+
+    monkeypatch.setattr("adapt1_fle.cli.subprocess.run", run)
+    monkeypatch.setattr("adapt1_fle.cli._tcp_available", lambda host, port: True)
+
+    restart_factorio_cluster()
+
+    assert calls == [["fle", "cluster", "restart", "-n", "1"]]
 
 
 async def test_adapt_setup_failure_records_terminal_lifecycle(

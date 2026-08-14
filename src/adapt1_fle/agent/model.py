@@ -52,7 +52,7 @@ class FLEPolicyGenerator:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         temperature: float = DEFAULT_TEMPERATURE,
         api_key_config_file: str | None = None,
-        parse_retries: int = 2,
+        parse_retries: int = 3,
         transport_retries: int = DEFAULT_TRANSPORT_RETRIES,
         seed: int | None = None,
     ) -> None:

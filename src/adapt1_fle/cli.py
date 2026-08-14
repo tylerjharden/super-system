@@ -14,6 +14,7 @@ import random
 import socket
 import subprocess
 import sys
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -131,6 +132,11 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--randomization-seed", type=int, default=None)
     evaluate.add_argument("--model-seed-base", type=int, default=None)
     evaluate.add_argument("--preregistration", default=None)
+    evaluate.add_argument(
+        "--restart-factorio-before-cell",
+        action="store_true",
+        help="restart the single local Factorio instance before each planned cell",
+    )
     evaluate.add_argument(
         "--continue-on-error",
         action="store_true",
@@ -560,6 +566,8 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
     print(f"experiment_id={experiment_id}")
     for cell in cells:
         arm = BenchmarkArm(cell.arm)
+        if arguments.restart_factorio_before_cell:
+            restart_factorio_cluster()
         run_id = _new_run_id(f"eval-{arm.value}-{cell.env_id}")
         arm_settings, domain_enabled, memory_enabled = _arm_settings(
             settings,
@@ -584,6 +592,7 @@ async def evaluate_command(arguments: argparse.Namespace) -> int:
                     "experiment_id": experiment_id,
                     "randomization_seed": arguments.randomization_seed,
                     "preregistration_hash": preregistration_hash,
+                    "factorio_restarted_before_cell": arguments.restart_factorio_before_cell,
                 },
             )
             print(
@@ -890,6 +899,24 @@ def balanced_strategy_schedule(*, seed: int, episode_ordinal: int, steps: int) -
         schedule.extend(strategies)
         block += 1
     return schedule[:steps]
+
+
+def restart_factorio_cluster() -> None:
+    result = subprocess.run(
+        ["fle", "cluster", "restart", "-n", "1"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"Factorio cluster restart failed: {detail}")
+    for _ in range(60):
+        if _tcp_available("127.0.0.1", 27000):
+            return
+        time.sleep(1)
+    raise RuntimeError("Factorio RCON did not become ready after restart")
 
 
 def model_provenance(model: str) -> dict[str, Any]:
