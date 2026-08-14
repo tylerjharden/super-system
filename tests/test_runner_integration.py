@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fle.env.gym_env.action import Action
 
 from adapt1_fle.agent.controller import AdaptiveController
@@ -126,3 +127,45 @@ async def test_baseline_runner_executes_and_records_complete_transition(
     assert metrics.final_score == 16
     assert metrics.steps == 1
     assert metrics.adapt_selection_count == 0
+
+
+async def test_environment_creation_failure_records_terminal_lifecycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = RunLedger.create(
+        tmp_path,
+        "run-env-failure",
+        {"run_id": "run-env-failure", "mode": "baseline"},
+    )
+    controller = AdaptiveController(
+        mode=RunMode.BASELINE,
+        run_id="run-env-failure",
+        domain_revision="1",
+        generator=StaticPolicyGenerator(),
+        conversation=ConversationWindow("system", max_messages=5),
+        ledger=ledger,
+    )
+
+    def fail_environment(*args: object, **kwargs: object) -> None:
+        raise ConnectionError("RCONClosed")
+
+    monkeypatch.setattr("adapt1_fle.runner.gym.make", fail_environment)
+    runner = TrajectoryRunner(
+        env_id="iron_ore_throughput",
+        trajectory_length=4,
+        controller=controller,
+        run_id="run-env-failure",
+        episode_id="episode-env-failure",
+    )
+
+    with pytest.raises(ConnectionError, match="RCONClosed"):
+        await runner.run()
+
+    events = list(ledger.read_events())
+    metrics = summarize_run(ledger)
+    assert [event["kind"] for event in events] == ["failure", "completion"]
+    assert events[0]["phase"] == "environment"
+    assert events[0]["failure_kind"] == "fle_execution"
+    assert events[1]["status"] == "failed"
+    assert metrics.completion_status == "failed"

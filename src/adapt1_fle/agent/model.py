@@ -19,6 +19,7 @@ from adapt1_fle.models import GeneratedPolicy
 
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_TEMPERATURE = 0.2
+DEFAULT_TRANSPORT_RETRIES = 2
 
 _REPAIR_PROMPT = (
     "Your previous reply was not usable. Reply with exactly one fenced "
@@ -53,12 +54,14 @@ class FLEPolicyGenerator:
         temperature: float = DEFAULT_TEMPERATURE,
         api_key_config_file: str | None = None,
         parse_retries: int = 2,
+        transport_retries: int = DEFAULT_TRANSPORT_RETRIES,
         seed: int | None = None,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.parse_retries = max(parse_retries, 0)
+        self.transport_retries = max(transport_retries, 0)
         self.seed = seed
         if seed is not None and not model.startswith("ollama"):
             raise ValueError("model_seed is currently supported only for Ollama models")
@@ -95,28 +98,33 @@ class FLEPolicyGenerator:
             usage: Any
             if self.model.startswith("ollama"):
                 response = None
-                try:
-                    raw_content, usage = await self._call_ollama(working)
-                except httpx.TransportError as error:
-                    # region agent log
-                    open("/opt/cursor/logs/debug.log", "a").write(
-                        json.dumps(
-                            {
-                                "hypothesisId": "D",
-                                "location": "agent/model.py:FLEPolicyGenerator.generate",
-                                "message": "ollama transport failed",
-                                "data": {
-                                    "attempt": attempt,
-                                    "model_seed": self.seed,
-                                    "error_type": type(error).__name__,
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }
+                transport_attempt = 0
+                while True:
+                    try:
+                        raw_content, usage = await self._call_ollama(working)
+                        break
+                    except httpx.TransportError as error:
+                        # region agent log
+                        open("/opt/cursor/logs/debug.log", "a").write(
+                            json.dumps(
+                                {
+                                    "hypothesisId": "D",
+                                    "location": "agent/model.py:FLEPolicyGenerator.generate",
+                                    "message": "ollama transport failed",
+                                    "data": {
+                                        "attempt": attempt,
+                                        "model_seed": self.seed,
+                                        "error_type": type(error).__name__,
+                                    },
+                                    "timestamp": int(time.time() * 1000),
+                                }
+                            )
+                            + "\n"
                         )
-                        + "\n"
-                    )
-                    # endregion
-                    raise
+                        # endregion
+                        if transport_attempt >= self.transport_retries:
+                            raise
+                        transport_attempt += 1
             else:
                 response = await self._factory.acall(
                     messages=working,

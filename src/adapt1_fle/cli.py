@@ -67,7 +67,7 @@ from adapt1_fle.factorio.state import compact_state, infer_phase
 from adapt1_fle.ledger import RunLedger
 from adapt1_fle.models import InteractionRecord, RunCompletion
 from adapt1_fle.report import write_report
-from adapt1_fle.runner import TrajectoryRunner
+from adapt1_fle.runner import TrajectoryRunner, classify_failure
 
 DEFAULT_CONFIG = "configs/research-preview.yaml"
 
@@ -693,6 +693,40 @@ async def execute_run(
     )
     # endregion
 
+    try:
+        return await _execute_run_runtime(
+            settings,
+            ledger=ledger,
+            definition=definition,
+            run_id=run_id,
+            episode_id=episode_id,
+            static_policy=static_policy,
+            enable_domain=enable_domain,
+            enable_memory=enable_memory,
+            forced_strategy_schedule=forced_strategy_schedule,
+        )
+    except BaseException as error:
+        _append_terminal_failure(
+            ledger,
+            run_id=run_id,
+            episode_id=episode_id,
+            error=error,
+        )
+        raise
+
+
+async def _execute_run_runtime(
+    settings: Settings,
+    *,
+    ledger: RunLedger,
+    definition: Any,
+    run_id: str,
+    episode_id: str,
+    static_policy: bool,
+    enable_domain: bool,
+    enable_memory: bool,
+    forced_strategy_schedule: list[str] | None,
+) -> tuple[RunCompletion, Path]:
     async with _client(settings) as client:
         domain = (
             FactorioDomain(
@@ -774,6 +808,39 @@ async def execute_run(
         )
         completion = await runner.run()
     return completion, ledger.run_dir
+
+
+def _append_terminal_failure(
+    ledger: RunLedger,
+    *,
+    run_id: str,
+    episode_id: str,
+    error: BaseException,
+) -> None:
+    if any(event.get("kind") == "completion" for event in ledger.read_events()):
+        return
+    failure = {
+        "kind": "failure",
+        "run_id": run_id,
+        "episode_id": episode_id,
+        "phase": "setup",
+        "failure_kind": classify_failure(error, "setup").value,
+        "error": f"{type(error).__name__}: {error}",
+        "ids": None,
+    }
+    ledger.append(failure)
+    ledger.append(
+        RunCompletion(
+            run_id=run_id,
+            episode_id=episode_id,
+            status="failed",
+            steps_completed=0,
+            success=False,
+            final_score=0,
+            final_automated_score=0,
+            error=f"{type(error).__name__}: {error}",
+        )
+    )
 
 
 def _arm_settings(
