@@ -1,12 +1,12 @@
 adapt_base_url: https://rei-neuroadapt-api.reilabs.org
-domain_id: factorio-strategy-v3
+domain_id: factorio-local-qwen7b-research-v1
 domain_config_path: configs/domain.factorio.v1.yaml
 model: ollama-qwen2.5-coder:7b
 env_id: iron_ore_throughput
 mode: baseline
-ledger_root: .fle/adapt1/runs
-trajectory_length: 64
-max_messages: 17
+ledger_root: .fle/adapt1/local-research-v1
+trajectory_length: 4
+max_messages: 5
 max_workers: 1
 memory_enabled: true
 adapt_top_k: 12

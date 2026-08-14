@@ -64,6 +64,8 @@ class ExperimentCell(BaseModel):
     arm: str
     env_id: str
     episode: int = Field(ge=0)
+    order: int = Field(default=0, ge=0)
+    model_seed: int | None = Field(default=None, ge=0)
 
     @property
     def key(self) -> str:
@@ -75,6 +77,9 @@ class ExperimentPlan(BaseModel):
 
     experiment_id: str
     comparison_fingerprint: str
+    randomization_seed: int | None = Field(default=None, ge=0)
+    model_seed_base: int | None = Field(default=None, ge=0)
+    preregistration_hash: str | None = None
     cells: list[ExperimentCell] = Field(min_length=1)
 
 

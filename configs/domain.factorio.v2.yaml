@@ -1,5 +1,5 @@
-revision: "3"
-domain_id: factorio-strategy-v3
+revision: "4"
+domain_id: factorio-strategy-v4
 description: >-
   Select high-level factory strategies from public FLE observations and revise
   their support from exact execution outcomes across ordered Factorio episodes.
@@ -101,6 +101,9 @@ query_templates:
     - success
 learning:
   enabled: true
+  policy:
+    exploration_mode: ucb
+    exploration_strength: 1.0
   credit_assignment:
     neutral_reward: 0.0
   sequential:

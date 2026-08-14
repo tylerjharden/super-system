@@ -7,6 +7,32 @@ set -uo pipefail
 
 export PATH="$HOME/.local/bin:$PATH"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OLLAMA_MODEL="${ADAPT1_FLE_OLLAMA_MODEL:-qwen2.5-coder:7b}"
+
+echo "==> Starting local Ollama model server"
+if command -v ollama >/dev/null 2>&1; then
+  if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+    nohup ollama serve >/tmp/adapt1-fle-ollama.log 2>&1 &
+    echo "$!" >/tmp/adapt1-fle-ollama.pid
+  fi
+  ollama_ready=0
+  for _ in $(seq 1 30); do
+    if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+      ollama_ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$ollama_ready" = "1" ]; then
+    ollama list | grep -Fq "$OLLAMA_MODEL" \
+      && echo "Ollama ready with $OLLAMA_MODEL" \
+      || echo "WARN: Ollama model $OLLAMA_MODEL is not installed" >&2
+  else
+    echo "WARN: Ollama API not ready" >&2
+  fi
+else
+  echo "WARN: Ollama is not installed" >&2
+fi
 
 echo "==> Starting Docker daemon"
 sudo service docker start >/dev/null 2>&1 || sudo systemctl start docker >/dev/null 2>&1 || true

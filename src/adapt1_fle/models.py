@@ -20,6 +20,7 @@ class SelectionSource(StrEnum):
     APPLICATION = "application"
     CONTROLLER = "controller"
     FALLBACK = "fallback"
+    FORCED_EXPLORATION = "forced_exploration"
 
 
 class FailureKind(StrEnum):

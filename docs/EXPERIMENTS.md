@@ -67,6 +67,24 @@ Diagnostics:
 Pass-rate reports use a Wilson 95% interval. Small samples must not be presented
 as conclusive.
 
+## Local-model research preview
+
+`configs/curriculum.local-research.v1.yaml` is the reproducible,
+resource-bounded protocol for Cloud Agents without a hosted-model key. It uses
+Ollama `qwen2.5-coder:7b`, eight four-step training episodes, one exposed
+retention task plus one held-out transfer task, five evaluation episodes per
+task, and four frozen comparison arms:
+
+- `baseline`: deterministic public-phase controller, no Adapt calls;
+- `warm_frozen`: trained Domain plus domain-scoped Memory;
+- `domain_only`: trained Domain without Memory;
+- `memory_only`: deterministic controller plus domain-scoped Memory.
+
+At four steps, the protocol plans at most 64 records and 224 queries. Exact
+Ollama digest/quantization metadata is stored in each run manifest and included
+in the comparison fingerprint. The local API prompt is compact enough to fit
+the model context and uses only public FLE tool semantics.
+
 ## Run sequence
 
 ```bash
@@ -90,6 +108,42 @@ adapt1-fle evaluate \
 # Aggregate
 adapt1-fle report --output reports/experiment-001
 ```
+
+## Follow-up protocol
+
+`configs/experiment.followup.v2.yaml` preregisters the longer-horizon study
+before any new Domain write. Its changes are deliberate:
+
+- UCB is declared in the Domain contract, while exposure also forces balanced
+  shuffled coverage so every policy receives feedback once per 12-step episode;
+- positive-only and failure-diagnostic Memory are materialized into separate
+  metadata profiles, with failure admission gated on prior same-task positive
+  evidence;
+- Memory queries use Domain scope to permit held-out transfer;
+- evaluation cells are shuffled with seed `20260813`;
+- each task/episode shares a model seed across arms;
+- six episodes per task/arm exceed the first study's five;
+- primary and secondary tests are defined before execution.
+
+The expected maximum is 129 records (including Domain creation) and 816
+queries. The exact preregistration hash is stored in the experiment plan and
+every run manifest.
+
+Followup-1 remains an immutable aborted pilot: two episodes and 24 feedback
+records completed before a third episode failed prior to its first interaction.
+It is excluded from followup-2, which uses a fresh Domain and ledger after a
+committed parser-hardening change.
+
+Followup-2 completed exposure and Memory materialization but its multi-day
+frozen evaluation was operationally incomplete. Followup-3 reuses that
+unchanged frozen state in a fresh experiment, preserves all scientific seeds
+and cells, retries transient Ollama transport three times with the same seed,
+writes terminal setup failures, and restarts Factorio before every cell.
+
+Followup-3 then demonstrated that TCP readiness alone precedes FLE
+authentication readiness: all cells wrote terminal setup failures before any
+interaction. Followup-4 adds a measured 20-second post-TCP settle interval; a
+real static FLE probe passed under that policy before preregistration.
 
 One `evaluate` invocation prints and stores an immutable experiment ID. Reports
 ignore curriculum/non-benchmark runs, require one experiment ID, and reject

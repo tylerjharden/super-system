@@ -1,0 +1,61 @@
+revision: "followup-4"
+status: preregistered
+supersedes: configs/experiment.followup.v3.yaml
+supersession_reason: >-
+  Followup-3 correctly recorded all 48 setup failures but entered zero
+  interactions because TCP readiness preceded FLE authentication readiness.
+  A controlled restart followed by a 20-second settle completed a real FLE
+  probe. Followup-4 adds only that measured settle interval.
+frozen_state:
+  domain_id: factorio-local-qwen7b-followup-v2
+  exposure_interactions: 96
+  positive_only_records: 3
+  failure_diagnostic_records: 13
+model:
+  name: ollama-qwen2.5-coder:7b
+  expected_digest: dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364
+  temperature: 0.2
+  max_tokens: 1024
+  parse_retries: 3
+  ollama_transport_attempts: 3
+evaluation:
+  arms:
+    - baseline
+    - domain_only
+    - warm_positive
+    - warm_diagnostic
+  tasks:
+    - iron_ore_throughput
+    - iron_gear_wheel_throughput
+  episodes_per_cell: 6
+  steps: 12
+  randomization_seed: 20260813
+  model_seed_base: 813000
+  factorio_restart_before_every_cell: true
+  factorio_post_tcp_settle_seconds: 20
+  setup_failures_write_terminal_records: true
+primary_endpoint:
+  metric: task_success
+  contrast: warm_positive_minus_baseline
+  population: both_evaluation_tasks
+  test: exact_paired_mcnemar
+secondary_endpoints:
+  metrics:
+    - final_production_score
+    - score_auc
+    - execution_error_count
+    - steps_to_success
+  contrasts:
+    - domain_only_minus_baseline
+    - warm_positive_minus_domain_only
+    - warm_diagnostic_minus_warm_positive
+  test: exact_paired_sign_flip_permutation
+  multiplicity: holm_within_metric
+interpretation_rules:
+  - No broad improvement claim if every arm has zero successes.
+  - Report exposed retention and held-out transfer separately.
+  - Treat operationally failed cells as missing for paired efficacy tests.
+  - Report all operational failures and paired sample counts.
+quota_ceiling:
+  records: 0
+  queries: 720

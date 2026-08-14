@@ -1,0 +1,99 @@
+{
+  "experiment_id": "experiment-20260811T041432Z-3ff8ac0a",
+  "comparison_fingerprint": "6d9ef73080714dfbb12d5b9346b07ca62c69e96b8fae43e7e47352acbb8ba058",
+  "experiment_complete": true,
+  "model": {
+    "name": "ollama-qwen2.5-coder:7b",
+    "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+    "parameter_size": "7.6B",
+    "quantization": "Q4_K_M",
+    "format": "gguf"
+  },
+  "training": {
+    "episodes": 8,
+    "interactions": 32,
+    "domain_feedback_records": 32,
+    "memory_records": 7,
+    "queries": 64,
+    "ambiguous_writes": 0,
+    "memory_reasons": {
+      "recurring_failure": 7
+    }
+  },
+  "evaluation": {
+    "runs": 40,
+    "interactions": 160,
+    "queries": 160,
+    "records": 0,
+    "operational_failures": 0,
+    "ambiguous_writes": 0,
+    "arms": {
+      "baseline": {
+        "n": 10,
+        "pass_rate": 0.0,
+        "mean_final_score": 4.3,
+        "mean_score_auc": 9.55,
+        "execution_error_rate": 0.525,
+        "adapt_selection_rate": 0.0
+      },
+      "warm_frozen": {
+        "n": 10,
+        "pass_rate": 0.0,
+        "mean_final_score": 0.0,
+        "mean_score_auc": 0.0,
+        "execution_error_rate": 0.325,
+        "adapt_selection_rate": 1.0
+      },
+      "domain_only": {
+        "n": 10,
+        "pass_rate": 0.0,
+        "mean_final_score": 0.9,
+        "mean_score_auc": 1.35,
+        "execution_error_rate": 0.35,
+        "adapt_selection_rate": 1.0
+      },
+      "memory_only": {
+        "n": 10,
+        "pass_rate": 0.0,
+        "mean_final_score": 0.9,
+        "mean_score_auc": 1.95,
+        "execution_error_rate": 0.55,
+        "adapt_selection_rate": 0.0
+      }
+    },
+    "task_final_score_means": {
+      "iron_ore_throughput": {
+        "baseline": 8.6,
+        "warm_frozen": 0.0,
+        "domain_only": 1.8,
+        "memory_only": 1.8
+      },
+      "iron_gear_wheel_throughput": {
+        "baseline": 0.0,
+        "warm_frozen": 0.0,
+        "domain_only": 0.0,
+        "memory_only": 0.0
+      }
+    },
+    "policy_counts": {
+      "baseline": {
+        "inspect": 13,
+        "debug": 27
+      },
+      "warm_frozen": {
+        "inspect": 40
+      },
+      "domain_only": {
+        "inspect": 40
+      },
+      "memory_only": {
+        "inspect": 11,
+        "debug": 29
+      }
+    }
+  },
+  "adapt_usage_for_study": {
+    "records": 39,
+    "queries": 224
+  }
+}

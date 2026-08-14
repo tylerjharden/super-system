@@ -61,9 +61,8 @@ class TrajectoryRunner:
         self.run_id = run_id
         self.episode_id = episode_id
         self._owns_environment = environment is None
-        self.environment = environment or cast(
-            FactorioEnvironment, gym.make(env_id, run_idx=run_idx)
-        )
+        self.run_idx = run_idx
+        self.environment = environment
         self.formatter = TreeObservationFormatter(
             include_research=False,
             include_flows=False,
@@ -81,7 +80,15 @@ class TrajectoryRunner:
         current_ids: InteractionIds | None = None
 
         try:
-            reset_result = self.environment.reset()
+            if self.environment is None:
+                phase = "environment"
+                self.environment = cast(
+                    FactorioEnvironment,
+                    gym.make(self.env_id, run_idx=self.run_idx),
+                )
+            environment = self.environment
+            phase = "reset"
+            reset_result = environment.reset()
             observation = _observation_from_dict(_reset_observation(reset_result))
 
             for step in range(self.trajectory_length):
@@ -110,7 +117,7 @@ class TrajectoryRunner:
                 )
 
                 phase = "execution"
-                obs_dict, raw_reward, terminated, truncated, info = self.environment.step(
+                obs_dict, raw_reward, terminated, truncated, info = environment.step(
                     Action(agent_idx=0, code=pending.generated_policy.code)
                 )
                 after_observation = _observation_from_dict(obs_dict)
@@ -175,7 +182,7 @@ class TrajectoryRunner:
                 "run_id": self.run_id,
                 "episode_id": self.episode_id,
                 "phase": phase,
-                "failure_kind": _failure_kind(error, phase).value,
+                "failure_kind": classify_failure(error, phase).value,
                 "error": f"{type(error).__name__}: {error}",
                 "ids": current_ids.model_dump(mode="json") if current_ids else None,
             }
@@ -195,7 +202,7 @@ class TrajectoryRunner:
                 self.controller.ledger.append(completion)
             raise
         finally:
-            if self._owns_environment:
+            if self._owns_environment and self.environment is not None:
                 self.environment.close()
 
 
@@ -253,7 +260,7 @@ def _json_object(value: Any) -> JsonObject:
     return {"value": str(value)}
 
 
-def _failure_kind(error: BaseException, phase: str) -> FailureKind:
+def classify_failure(error: BaseException, phase: str) -> FailureKind:
     if isinstance(error, asyncio.CancelledError | KeyboardInterrupt):
         return FailureKind.INTERRUPTED
     if isinstance(error, AdaptClientError):
@@ -264,7 +271,7 @@ def _failure_kind(error: BaseException, phase: str) -> FailureKind:
         return FailureKind.MODEL_OUTPUT
     if phase == "decision":
         return FailureKind.MODEL_TRANSPORT
-    if phase == "execution":
+    if phase in {"environment", "execution"}:
         return FailureKind.FLE_EXECUTION
     if phase == "feedback":
         return FailureKind.ADAPT_TRANSPORT

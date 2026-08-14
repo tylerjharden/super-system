@@ -106,6 +106,32 @@ event stream contains `success` or `trajectory_limit` completion. Failed and
 ambiguous runs are blocked, not pending: an operator must reconcile remote
 learner state before intentionally starting a replacement experiment.
 
+### Recovering a frozen evaluation matrix
+
+Do not append a replacement run for a failed or manifest-only evaluation cell.
+That creates two manifests for one logical `arm/task/episode` cell. Do not
+append a second attempt to the existing event stream either: a partial attempt
+may already contain observations or model calls, and combining attempts changes
+the cell's metrics.
+
+When the harness changes after an interrupted frozen evaluation, its comparison
+fingerprint also changes. Preserve the original plan and run directories as an
+immutable aborted experiment, then:
+
+1. correct the external RCON, Adapt authentication, and model availability
+   failures;
+2. run `adapt1-fle doctor`;
+3. launch the same `evaluate` command, including the original curriculum,
+   arms, tasks, episode count, trajectory length, randomization seed, model seed
+   base, and preregistration file;
+4. use the newly printed experiment ID for reporting, and never aggregate its
+   ledgers with the aborted experiment.
+
+This creates a fresh plan with the same logical matrix, order, and model seeds,
+without duplicate cells inside either experiment. Automatic in-place recovery
+is intentionally unavailable, even for non-mutating baseline/frozen arms,
+because changed generation or retry behavior would silently mix protocols.
+
 ## Common failures
 
 ### `string indices must be integers`
@@ -148,9 +174,19 @@ supported key is visible to the process.
 
 ### Missing model credential
 
-The default `claude-*` model requires `ANTHROPIC_API_KEY`. OpenRouter model
-names containing `/` require `OPEN_ROUTER_API_KEY`. Baseline static smoke does
-not require a model key.
+The default `ollama-qwen2.5-coder:7b` model requires a running local Ollama API
+and the pre-pulled model, but no model API key:
+
+```bash
+ollama serve
+ollama pull qwen2.5-coder:7b
+curl -fsS http://127.0.0.1:11434/api/tags | jq .
+adapt1-fle doctor
+```
+
+Hosted `claude-*` models require `ANTHROPIC_API_KEY`. OpenRouter model names
+containing `/` require `OPEN_ROUTER_API_KEY`. Baseline static smoke does not
+require any model.
 
 ## Data handling
 
