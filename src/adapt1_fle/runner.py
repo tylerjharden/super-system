@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any, Protocol, cast
@@ -83,42 +82,10 @@ class TrajectoryRunner:
         try:
             if self.environment is None:
                 phase = "environment"
-                # region agent log
-                open("/opt/cursor/logs/debug.log", "a").write(
-                    json.dumps(
-                        {
-                            "hypothesisId": "B",
-                            "location": "runner.py:TrajectoryRunner.__init__",
-                            "message": "environment initialization starting",
-                            "data": {
-                                "run_id": self.run_id,
-                                "env_id": self.env_id,
-                                "injected_environment": False,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-                # endregion
                 self.environment = cast(
                     FactorioEnvironment,
                     gym.make(self.env_id, run_idx=self.run_idx),
                 )
-                # region agent log
-                open("/opt/cursor/logs/debug.log", "a").write(
-                    json.dumps(
-                        {
-                            "hypothesisId": "B",
-                            "location": "runner.py:TrajectoryRunner.__init__",
-                            "message": "environment initialization completed",
-                            "data": {"run_id": self.run_id, "env_id": self.env_id},
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-                # endregion
             environment = self.environment
             phase = "reset"
             reset_result = environment.reset()

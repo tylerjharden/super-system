@@ -673,25 +673,6 @@ async def execute_run(
     if manifest_extra:
         manifest.update(manifest_extra)
     ledger = RunLedger.create(settings.ledger_root, run_id, manifest)
-    # region agent log
-    open("/opt/cursor/logs/debug.log", "a").write(
-        json.dumps(
-            {
-                "hypothesisId": "A",
-                "location": "cli.py:execute_run",
-                "message": "manifest committed before runtime setup",
-                "data": {
-                    "run_id": run_id,
-                    "enable_domain": enable_domain,
-                    "enable_memory": enable_memory,
-                    "model_seed": settings.model_seed,
-                },
-                "timestamp": int(datetime.now(UTC).timestamp() * 1000),
-            }
-        )
-        + "\n"
-    )
-    # endregion
 
     try:
         return await _execute_run_runtime(
@@ -740,20 +721,6 @@ async def _execute_run_runtime(
         )
         if domain is not None:
             await domain.ensure(create_if_missing=settings.mode is RunMode.TRAIN)
-        # region agent log
-        open("/opt/cursor/logs/debug.log", "a").write(
-            json.dumps(
-                {
-                    "hypothesisId": "A",
-                    "location": "cli.py:execute_run",
-                    "message": "adapt setup completed",
-                    "data": {"run_id": run_id, "domain_present": domain is not None},
-                    "timestamp": int(datetime.now(UTC).timestamp() * 1000),
-                }
-            )
-            + "\n"
-        )
-        # endregion
         memory = (
             FactorioMemory(
                 client,
