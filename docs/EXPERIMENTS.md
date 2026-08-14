@@ -140,6 +140,11 @@ unchanged frozen state in a fresh experiment, preserves all scientific seeds
 and cells, retries transient Ollama transport three times with the same seed,
 writes terminal setup failures, and restarts Factorio before every cell.
 
+Followup-3 then demonstrated that TCP readiness alone precedes FLE
+authentication readiness: all cells wrote terminal setup failures before any
+interaction. Followup-4 adds a measured 20-second post-TCP settle interval; a
+real static FLE probe passed under that policy before preregistration.
+
 One `evaluate` invocation prints and stores an immutable experiment ID. Reports
 ignore curriculum/non-benchmark runs, require one experiment ID, and reject
 mixed comparison fingerprints. Use `--experiment-id` when a ledger root

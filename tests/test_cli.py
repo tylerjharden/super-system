@@ -123,6 +123,7 @@ def test_memory_profile_arms_are_isolated() -> None:
 
 def test_factorio_restart_waits_for_rcon(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
+    sleeps: list[float] = []
 
     def run(command: list[str], **kwargs: object) -> object:
         calls.append(command)
@@ -130,10 +131,12 @@ def test_factorio_restart_waits_for_rcon(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr("adapt1_fle.cli.subprocess.run", run)
     monkeypatch.setattr("adapt1_fle.cli._tcp_available", lambda host, port: True)
+    monkeypatch.setattr("adapt1_fle.cli.time.sleep", sleeps.append)
 
     restart_factorio_cluster()
 
     assert calls == [["fle", "cluster", "restart", "-n", "1"]]
+    assert sleeps == [20]
 
 
 async def test_adapt_setup_failure_records_terminal_lifecycle(

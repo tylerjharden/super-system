@@ -914,6 +914,7 @@ def restart_factorio_cluster() -> None:
         raise RuntimeError(f"Factorio cluster restart failed: {detail}")
     for _ in range(60):
         if _tcp_available("127.0.0.1", 27000):
+            time.sleep(20)
             return
         time.sleep(1)
     raise RuntimeError("Factorio RCON did not become ready after restart")

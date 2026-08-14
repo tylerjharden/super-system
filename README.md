@@ -266,7 +266,7 @@ adapt1-fle --config configs/followup-research-v2.yaml memory materialize \
   --profile failure_diagnostic \
   --max-per-profile 16
 
-adapt1-fle --config configs/followup-evaluation-v3.yaml evaluate \
+adapt1-fle --config configs/followup-evaluation-v4.yaml evaluate \
   --curriculum configs/curriculum.followup.v2.yaml \
   --arm baseline \
   --arm domain_only \
@@ -278,7 +278,7 @@ adapt1-fle --config configs/followup-evaluation-v3.yaml evaluate \
   --steps 12 \
   --randomization-seed 20260813 \
   --model-seed-base 813000 \
-  --preregistration configs/experiment.followup.v3.yaml \
+  --preregistration configs/experiment.followup.v4.yaml \
   --restart-factorio-before-cell \
   --continue-on-error
 ```
