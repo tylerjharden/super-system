@@ -84,7 +84,7 @@ async def test_ollama_transport_retry_is_bounded(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(httpx.ReadTimeout, match="model stalled"):
         await generator.generate([{"role": "user", "content": "inspect"}])
 
-    assert len(route.calls) == 4
+    assert len(route.calls) == 3
 
 
 @pytest.mark.asyncio
@@ -107,8 +107,9 @@ async def test_malformed_generation_exhausts_repairs_with_same_seed(
     with pytest.raises(PolicyGenerationError, match="invalid Python"):
         await generator.generate([{"role": "user", "content": "inspect"}])
 
-    assert len(route.calls) == 3
+    assert len(route.calls) == 4
     assert [json.loads(call.request.content)["seed"] for call in route.calls] == [
+        812348,
         812348,
         812348,
         812348,
